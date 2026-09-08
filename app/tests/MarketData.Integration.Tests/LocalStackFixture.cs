@@ -24,8 +24,9 @@ public sealed class LocalStackFixture : IAsyncLifetime
     public string TableName => "pit-marketdata-test";
 
     /// <summary>
-    /// Host:port of the LocalStack S3 endpoint, without a scheme, in the form DuckDB's
-    /// httpfs secret expects.
+    /// Host:port of the LocalStack S3 endpoint, without a scheme. Used by the AWS SDK
+    /// clients above; DuckDB's httpfs ignores an endpoint override, so it cannot be
+    /// pointed here.
     /// </summary>
     public string Endpoint { get; private set; } = string.Empty;
 

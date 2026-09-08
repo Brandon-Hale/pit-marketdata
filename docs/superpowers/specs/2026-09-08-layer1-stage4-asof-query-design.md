@@ -288,9 +288,22 @@ the ex-date, which may be missing from the requested window or absent entirely. 
 be explicit: when the prior close is unavailable, the dividend contributes no factor and the
 result is flagged rather than silently wrong.
 
-**`httpfs` in tests.** DuckDB against LocalStack over `httpfs` requires path-style addressing
-and an endpoint override. If that proves unreliable, read-path equivalence is asserted against
-real S3 in a manual check instead, and the reason recorded — not dropped.
+**`httpfs` in tests — resolved 2026-09-08, and the fallback was needed.** DuckDB's httpfs
+**ignores the `ENDPOINT` override** on an S3 secret and contacts real AWS regardless, so a
+LocalStack run never reaches the container: it fails with AWS's own
+`InvalidAccessKeyId: "test"`. Path-style addressing and `USE_SSL false` make no difference,
+and neither does scoping the secret to the prefix.
+
+Read-path equivalence is therefore asserted against **real S3**, opt-in via
+`PITMD_S3_TEST_BUCKET`, and skipped by default including in CI. Verified manually against a
+throwaway bucket in `ap-southeast-2`: a bar written through `S3CuratedStore` read back
+through `DuckDbMarketDataQuery` with matching values.
+
+That check also answered a more important question. The CI failure showed DuckDB issuing an
+HTTP GET against the prefix rather than listing it, which would have meant the `**` glob does
+not expand over S3 — a production bug, not a test problem. It does expand correctly against
+real S3, so **the production read path is sound**; only the LocalStack substitute is not
+usable.
 
 **`INSTALL httpfs` downloads from the internet — a Stage 5 problem, recorded here.**
 `CuratedSource.Setup` issues `INSTALL httpfs; LOAD httpfs;`. `INSTALL` fetches the extension
