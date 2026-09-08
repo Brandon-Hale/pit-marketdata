@@ -1,5 +1,6 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/MarketData.Cli/MarketData.Cli.csproj" />
     <Project Path="src/MarketData.Domain/MarketData.Domain.csproj" />
     <Project Path="src/MarketData.Hosting/MarketData.Hosting.csproj" />
     <Project Path="src/MarketData.Lambda/MarketData.Lambda.csproj" />
@@ -8,6 +9,7 @@
     <Project Path="src/MarketData.Storage/MarketData.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/MarketData.Cli.Tests/MarketData.Cli.Tests.csproj" />
     <Project Path="tests/MarketData.Domain.Tests/MarketData.Domain.Tests.csproj" />
     <Project Path="tests/MarketData.Hosting.Tests/MarketData.Hosting.Tests.csproj" />
     <Project Path="tests/MarketData.Integration.Tests/MarketData.Integration.Tests.csproj" />
