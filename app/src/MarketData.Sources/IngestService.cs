@@ -18,9 +18,16 @@ public sealed class IngestService(
     IRawStore rawStore,
     ICuratedStore curatedStore,
     ICursorRepository cursors,
-    Func<string, DateOnly, CancellationToken, Task<decimal?>>? knownCloseLookup = null)
+    Func<string, DateOnly, CancellationToken, Task<decimal?>>? knownCloseLookup = null,
+    Func<string, CancellationToken, Task<IReadOnlyList<CorporateAction>>>? knownActionsLookup = null)
 {
     private const string Dataset = "prices_daily";
+
+    /// <summary>
+    /// Recorded as the splits provenance when the un-adjust used hand-entered actions
+    /// rather than a vendor payload, because there is no raw object to point at.
+    /// </summary>
+    public const string ManualActionsKey = "manual";
 
     public async Task<IngestResult> IngestSymbolAsync(
         string symbol, DateOnly from, DateOnly to, string ingestId, CancellationToken ct)
@@ -53,21 +60,36 @@ public sealed class IngestService(
         var rawKey = await rawStore.WriteAsync(envelope, runDate, ct);
 
         // Splits are fetched in the same run and their key recorded on every price row,
-        // so a rebuild un-adjusts with exactly this split history rather than whatever
-        // is known at rebuild time.
-        var splitsEnvelope = await source.FetchSplitsAsync(symbol, ct);
-        var splitsRawKey = await rawStore.WriteAsync(splitsEnvelope, runDate, ct);
+        // so a rebuild un-adjusts with exactly this split history rather than whatever is
+        // known at rebuild time.
+        //
+        // When the vendor plan does not cover splits for this symbol, the actions already
+        // recorded -- entered by hand, with source MANUAL -- are used instead. Ingesting
+        // without them is never an option: prices are split-adjusted, so a missing split
+        // history would store adjusted prices labelled as unadjusted.
+        List<CorporateAction> actions;
+        string splitsRawKey;
 
-        // Dividends are fetched too. They play no part in un-adjusting -- the vendor
-        // adjusts for splits only -- but without them PriceAdjustment.SplitsAndDividends
-        // would find no dividend rows and silently return a splits-only series.
-        var dividendsEnvelope = await source.FetchDividendsAsync(symbol, ct);
-        var dividendsRawKey = await rawStore.WriteAsync(dividendsEnvelope, runDate, ct);
+        try
+        {
+            var splitsEnvelope = await source.FetchSplitsAsync(symbol, ct);
+            splitsRawKey = await rawStore.WriteAsync(splitsEnvelope, runDate, ct);
 
-        var actions = ToActions(actionsNormaliser.ParseSplits(splitsEnvelope), splitsRawKey)
-            .Concat(ToActions(actionsNormaliser.ParseDividends(dividendsEnvelope), dividendsRawKey))
-            .OrderBy(a => a.ExDate)
-            .ToList();
+            var dividendsEnvelope = await source.FetchDividendsAsync(symbol, ct);
+            var dividendsRawKey = await rawStore.WriteAsync(dividendsEnvelope, runDate, ct);
+
+            actions = ToActions(actionsNormaliser.ParseSplits(splitsEnvelope), splitsRawKey)
+                .Concat(ToActions(actionsNormaliser.ParseDividends(dividendsEnvelope), dividendsRawKey))
+                .OrderBy(a => a.ExDate)
+                .ToList();
+        }
+        catch (VendorNotEntitledException) when (knownActionsLookup is not null)
+        {
+            // No raw object to name, because none was fetched. The rows already in the
+            // curated store are the record, and they carry their own provenance.
+            splitsRawKey = ManualActionsKey;
+            actions = (await knownActionsLookup(symbol, ct)).ToList();
+        }
 
         IEnumerable<CorporateAction> ToActions(IReadOnlyList<ParsedAction> parsedActions, string key) =>
             parsedActions.Select(a => new CorporateAction(
@@ -119,7 +141,9 @@ public sealed class IngestService(
             ? await curatedStore.AppendPricesAsync(bars, ingestId, ct)
             : [];
 
-        if (actions.Count > 0)
+        // Manual actions are already in the curated store; re-appending them would create
+        // duplicate rows differing only by ingest id.
+        if (actions.Count > 0 && splitsRawKey != ManualActionsKey)
         {
             await curatedStore.AppendActionsAsync(actions, ingestId, ct);
         }

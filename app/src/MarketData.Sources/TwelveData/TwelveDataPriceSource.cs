@@ -55,6 +55,12 @@ public sealed class TwelveDataPriceSource(
                 throw new VendorNoDataException(symbol, dataset, "no rows in the requested window");
             }
 
+            if (response.StatusCode == System.Net.HttpStatusCode.Forbidden)
+            {
+                throw new VendorNotEntitledException(
+                    symbol, dataset, "the vendor plan does not cover this endpoint for this symbol");
+            }
+
             response.EnsureSuccessStatusCode();
         }
 
