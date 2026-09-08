@@ -253,6 +253,57 @@ public sealed class IngestServiceTests : IDisposable
         cursor.RecentCloses![new DateOnly(2020, 6, 15)].ShouldBe(342.99m);
     }
 
+    [Fact]
+    public async Task An_empty_vendor_window_is_skipped_not_an_error()
+    {
+        // Twelve Data answers a window with no bars using HTTP 400 and "No data is
+        // available", which is the normal reply on a weekend or before the day publishes.
+        var handler = new StubHandler(
+            """{"code":400,"message":"No data is available on the specified dates.","status":"error"}""",
+            System.Net.HttpStatusCode.BadRequest);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.twelvedata.com/") };
+        var curated = new CapturingCuratedStore();
+
+        var result = await new IngestService(
+            new TwelveDataPriceSource(client, "SECRET", new FakeTimeProvider(Now)),
+            new TwelveDataPriceNormaliser(),
+            new TwelveDataActionsNormaliser(),
+            new ObservationPolicy(new UsEquityPublicationClock(), TimeSpan.FromHours(24)),
+            new LocalRawStore(_root),
+            curated,
+            new InMemoryCursorRepository()).IngestSymbolAsync(
+                "AAPL", new DateOnly(2026, 9, 5), new DateOnly(2026, 9, 8), "run-1",
+                TestContext.Current.CancellationToken);
+
+        result.SkippedUnchanged.ShouldBeTrue();
+        result.RowsWritten.ShouldBe(0);
+        curated.Prices.ShouldBeEmpty();
+        // Nothing is written to raw either: an absent window is not an observation.
+        Directory.Exists(Path.Combine(_root, "raw")).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_genuine_vendor_error_still_throws()
+    {
+        // A 400 that is not "no data" must not be swallowed, or a broken request would look
+        // like a quiet weekend forever.
+        var handler = new StubHandler(
+            """{"code":400,"message":"**symbol** parameter is missing.","status":"error"}""",
+            System.Net.HttpStatusCode.BadRequest);
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.twelvedata.com/") };
+
+        await Should.ThrowAsync<HttpRequestException>(() => new IngestService(
+            new TwelveDataPriceSource(client, "SECRET", new FakeTimeProvider(Now)),
+            new TwelveDataPriceNormaliser(),
+            new TwelveDataActionsNormaliser(),
+            new ObservationPolicy(new UsEquityPublicationClock(), TimeSpan.FromHours(24)),
+            new LocalRawStore(_root),
+            new CapturingCuratedStore(),
+            new InMemoryCursorRepository()).IngestSymbolAsync(
+                "AAPL", new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), "run-1",
+                TestContext.Current.CancellationToken));
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
