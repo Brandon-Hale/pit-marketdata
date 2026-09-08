@@ -986,7 +986,7 @@ from `curl -s https://api.nuget.org/v3-flatcontainer/amazon.lambda.serialization
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>bootstrap</AssemblyName>
+    <AssemblyName>MarketData.Lambda</AssemblyName>
     <PublishReadyToRun>false</PublishReadyToRun>
   </PropertyGroup>
 
@@ -1004,9 +1004,17 @@ from `curl -s https://api.nuget.org/v3-flatcontainer/amazon.lambda.serialization
 </Project>
 ```
 
-`AssemblyName` is `bootstrap` because the managed runtime's custom-runtime convention expects
-that executable name. Add `Microsoft.Extensions.DependencyInjection` to
-`Directory.Packages.props` if it is not already pinned, matching the Abstractions version.
+`OutputType` is `Exe` because this uses the managed `dotnet10` runtime's **executable assembly**
+handler model: `Amazon.Lambda.RuntimeSupport` runs the invocation loop from `Main`, and the
+Terraform `handler` is then simply the assembly name. `AssemblyName` is stated explicitly, even
+though it already matches the project name, because that Terraform string depends on it.
+
+This is *not* the custom runtime. `provided.al2023` is a separate runtime, needed only for Native
+AOT, and it alone requires the executable to be named `bootstrap`. `RuntimeSupport` in the csproj
+is not evidence of one — the executable-assembly model needs it on the managed runtime too.
+
+Add `Microsoft.Extensions.DependencyInjection` to `Directory.Packages.props` if it is not already
+pinned, matching the Abstractions version.
 
 - [ ] **Step 2: Write the architecture test**
 
@@ -2069,7 +2077,7 @@ resource "aws_iam_role_policy" "ingest" {
 resource "aws_lambda_function" "ingest" {
   function_name = "${var.project}-ingest"
   role          = aws_iam_role.ingest.arn
-  handler       = "bootstrap"
+  handler       = "MarketData.Lambda"
   runtime       = "dotnet10"
   architectures = ["arm64"]
   memory_size   = 512
