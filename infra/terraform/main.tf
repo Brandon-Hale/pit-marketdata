@@ -53,3 +53,15 @@ module "observability" {
   project     = var.project
   alarm_email = var.alarm_email
 }
+
+module "ingest" {
+  source = "./modules/ingest"
+
+  project         = var.project
+  region          = var.region
+  data_bucket     = module.storage.data_bucket
+  data_bucket_arn = module.storage.data_bucket_arn
+  table_name      = module.storage.table_name
+  table_arn       = module.storage.table_arn
+  lambda_zip_path = var.lambda_zip_path
+}
