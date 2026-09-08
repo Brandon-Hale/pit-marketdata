@@ -19,3 +19,9 @@ variable "alarm_email" {
   description = "Address to receive billing alarm notifications."
   type        = string
 }
+
+variable "lambda_zip_path" {
+  description = "Path to the built Lambda deployment package, from scripts/build-lambda.sh."
+  type        = string
+  default     = "../../dist/lambda.zip"
+}

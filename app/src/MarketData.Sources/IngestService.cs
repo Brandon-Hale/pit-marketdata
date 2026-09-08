@@ -25,7 +25,21 @@ public sealed class IngestService(
     public async Task<IngestResult> IngestSymbolAsync(
         string symbol, DateOnly from, DateOnly to, string ingestId, CancellationToken ct)
     {
-        var envelope = await source.FetchDailyBarsAsync(symbol, from, to, ct);
+        RawEnvelope envelope;
+
+        try
+        {
+            envelope = await source.FetchDailyBarsAsync(symbol, from, to, ct);
+        }
+        catch (VendorNoDataException)
+        {
+            // No rows in the window. Nothing was learned, which is the same outcome as an
+            // unchanged payload -- and the normal one on a weekend or before the day's data
+            // is published. Recording it as a failure would make most scheduled runs look
+            // broken and hide the ones that are.
+            return new IngestResult(symbol, SkippedUnchanged: true, 0, null, []);
+        }
+
         var cursor = await cursors.GetAsync(Dataset, symbol, ct);
 
         // Nothing changed at the vendor, so nothing was learned. No raw object is
