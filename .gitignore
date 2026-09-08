@@ -59,6 +59,11 @@ secrets.json
 *.duckdb
 *.duckdb.wal
 
+# ---------- Docs ----------
+# Specs and plans are kept out of the repository entirely; the docs/ tree was
+# purged from history. Ignored so a stray `git add` cannot put it back.
+/docs/
+
 # ---------- OS / editor ----------
 .DS_Store
 Thumbs.db

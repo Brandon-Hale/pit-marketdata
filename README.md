@@ -315,8 +315,7 @@ Recorded as decisions, not discovered later.
   so `1` is correct — but a new AWS account's total concurrency quota is 10 and AWS refuses a
   reservation leaving fewer than 10 unreserved.
 - Survivorship bias from an opt-in universe, inferred timestamps on backfilled history, and
-  single-vendor risk are documented in
-  [§10 of the design](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md#10-known-limitations).
+  single-vendor risk are known and accepted for a single-user warehouse.
 
 ---
 
@@ -361,7 +360,6 @@ app/                       the .NET solution
   tests/                     one project per source project, plus LocalStack integration
 infra/terraform/           bootstrap, modules/storage, modules/observability, modules/ingest
 scripts/                   build-lambda.sh, verify-vendor.sh
-docs/superpowers/          design specs and implementation plans
 ```
 
 ## Development

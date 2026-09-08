@@ -53,13 +53,10 @@ NuGet cache is a further 3.5 GB (`dotnet nuget locals all --clear`).
 
 ## Start here
 
-1. Read [`docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md`](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md) - what and why.
-2. Read [`docs/superpowers/plans/2026-09-08-layer1-foundations.md`](docs/superpowers/plans/2026-09-08-layer1-foundations.md) - 19 tasks, Stages 0-3.
-3. The next plan covers Stages 4-6 and has not been written yet.
-
-There is deliberately **no runnable application yet**. Everything under `app/src`
-is a class library. The Lambda, the CLI and the as-of query layer are Stages 4-6
-and get their own plan. Do not build them early.
+The design specs and implementation plans are no longer tracked here - the `docs/`
+tree was removed from the repository and from its history. [`README.md`](README.md)
+is now the description of what the system does and how it works; the non-negotiables
+below are the rules that document imposed on the code.
 
 ## Non-negotiables
 
@@ -136,7 +133,6 @@ one top-level folder:
 app/          MarketData.slnx, Directory.*.props, global.json, src/, tests/
 infra/        Terraform (bootstrap/, modules/storage, modules/observability)
 scripts/      shell helpers
-docs/         spec and plans
 .editorconfig at the ROOT - it carries Terraform and YAML rules too
 ```
 
