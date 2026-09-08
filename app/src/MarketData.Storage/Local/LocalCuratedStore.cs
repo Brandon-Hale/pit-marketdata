@@ -54,7 +54,8 @@ public sealed class LocalCuratedStore(string rootDirectory) : ICuratedStore
         ObservedAt = b.ObservedAt.UtcDateTime,
         ObservedAtKind = b.ObservedAtKind.ToString().ToUpperInvariant(),
         IngestId = b.IngestId,
-        RawKey = b.RawKey
+        RawKey = b.RawKey,
+        SplitsRawKey = b.SplitsRawKey
     };
 
     private static CorporateActionRow ToRow(CorporateAction a) => new()

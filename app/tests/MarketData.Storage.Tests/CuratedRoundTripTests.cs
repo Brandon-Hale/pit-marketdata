@@ -67,6 +67,26 @@ public sealed class CuratedRoundTripTests : IDisposable
         Convert.ToInt64(rows[0]["n"]).ShouldBe(2L);
     }
 
+    [Fact]
+    public async Task Splits_raw_key_survives_the_write()
+    {
+        var store = new LocalCuratedStore(_root);
+        var at = new DateTimeOffset(2020, 8, 31, 20, 15, 0, TimeSpan.Zero);
+        var bar = Bar(129.04m, at, ObservationKind.Inferred) with
+        {
+            SplitsRawKey = "raw/source=twelvedata/dataset=splits/dt=2026-09-08/AAPL.json"
+        };
+
+        await store.AppendPricesAsync([bar], "run-1", TestContext.Current.CancellationToken);
+
+        using var duck = new DuckDbReader();
+        var rows = duck.Query(
+            $"SELECT SplitsRawKey FROM read_parquet('{DuckDbReader.Glob(_root, "prices_daily")}')");
+
+        rows[0]["SplitsRawKey"]!.ToString()
+            .ShouldBe("raw/source=twelvedata/dataset=splits/dt=2026-09-08/AAPL.json");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
