@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Parquet.Net" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\MarketData.Domain\MarketData.Domain.csproj" />
   </ItemGroup>
 
