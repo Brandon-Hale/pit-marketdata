@@ -25,9 +25,14 @@ public sealed class CuratedSource
 
     /// <summary>
     /// An S3 bucket, read in place through DuckDB's httpfs extension.
-    /// <paramref name="endpoint"/> overrides the AWS endpoint for LocalStack; production
-    /// leaves it null.
     /// </summary>
+    /// <param name="endpoint">
+    /// Intended to point httpfs at LocalStack, but DuckDB ignores it and reaches real AWS
+    /// regardless — a LocalStack run fails with AWS's own <c>InvalidAccessKeyId: "test"</c>.
+    /// Kept because the emitted secret is still correct if a future DuckDB honours it, but
+    /// do not rely on it: read-path equivalence is checked against a scratch bucket in real
+    /// S3 instead. Production leaves this null.
+    /// </param>
     public static CuratedSource S3(string bucket, string? endpoint = null) =>
         new($"s3://{bucket}", isS3: true, endpoint);
 
