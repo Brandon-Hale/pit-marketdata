@@ -18,9 +18,17 @@ public sealed record DailyBar(
     DateTimeOffset ObservedAt,
     ObservationKind ObservedAtKind,
     string IngestId,
-    string RawKey)
+    string RawKey,
+    string SplitsRawKey = "")
 {
     private readonly DateTimeOffset _observedAt = RequireUtc(ObservedAt);
+
+    /// <summary>
+    /// Raw key of the splits payload used to un-adjust this bar's prices. Empty when no
+    /// un-adjustment was applied. Recorded so a rebuild can redo identical arithmetic
+    /// years later rather than using whatever splits are known at rebuild time.
+    /// </summary>
+    public string SplitsRawKey { get; init; } = SplitsRawKey;
 
     /// <summary>The UTC instant this fact was learned. Always zero-offset.</summary>
     public DateTimeOffset ObservedAt
