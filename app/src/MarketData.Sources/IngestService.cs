@@ -17,7 +17,8 @@ public sealed class IngestService(
     ObservationPolicy policy,
     IRawStore rawStore,
     ICuratedStore curatedStore,
-    ICursorRepository cursors)
+    ICursorRepository cursors,
+    Func<string, DateOnly, CancellationToken, Task<decimal?>>? knownCloseLookup = null)
 {
     private const string Dataset = "prices_daily";
 
@@ -66,12 +67,15 @@ public sealed class IngestService(
 
             var close = bar.Close / factor;
 
-            // Prior knowledge is currently the cursor's watermark only; a bar at or
-            // before it is treated as already known and unchanged. Task 10 replaces this
-            // with a per-date lookup through the query layer.
-            var known = cursor?.LastEffectiveDate is { } last && bar.EffectiveDate <= last
-                ? close
-                : (decimal?)null;
+            // Prior knowledge is a real per-date lookup when one is supplied. The
+            // cursor watermark remains as the fallback: it only ever caught a
+            // restatement whose close differed on a bar at or before the watermark,
+            // which is the common case but not every one.
+            var known = knownCloseLookup is null
+                ? (cursor?.LastEffectiveDate is { } last && bar.EffectiveDate <= last
+                    ? close
+                    : (decimal?)null)
+                : await knownCloseLookup(symbol, bar.EffectiveDate, ct);
 
             if (policy.Decide(bar.EffectiveDate, close, known, envelope.ObservedAt) is not { } decision)
             {
