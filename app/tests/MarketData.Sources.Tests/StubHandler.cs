@@ -19,3 +19,20 @@ public sealed class StubHandler(string body, HttpStatusCode status = HttpStatusC
         });
     }
 }
+
+/// <summary>Returns a different canned body per URL path segment.</summary>
+public sealed class RoutingStubHandler(IReadOnlyDictionary<string, string> bodyByPath)
+    : HttpMessageHandler
+{
+    protected override Task<HttpResponseMessage> SendAsync(
+        HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        var path = request.RequestUri!.AbsolutePath.Trim('/');
+        var body = bodyByPath.TryGetValue(path, out var b) ? b : "{}";
+
+        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent(body)
+        });
+    }
+}
