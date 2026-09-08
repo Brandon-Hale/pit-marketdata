@@ -55,15 +55,18 @@ Two supporting rules do most of the remaining work:
 
 | Stage | Deliverable | Status |
 |---|---|---|
-| 0 | Repo, solution skeleton, CI | In progress |
-| 1 | Domain, as-of query layer, **8 temporal correctness tests** | Not started |
-| 2 | Twelve Data source, normaliser, CLI ingest | Not started |
-| 3 | Terraform: S3, DynamoDB, Lambda, EventBridge | Not started |
-| 4 | Reprocess, compaction, rebuild-from-raw proof | Not started |
-| 5 | SEC EDGAR fundamentals | Not started |
+| 0 | Repo, solution skeleton, pinned package baseline, CI | In progress |
+| 1 | Infrastructure — Terraform: S3, DynamoDB, IAM, alarms | Not started |
+| 2 | Data layer — domain, Parquet schemas, stores, repositories | Not started |
+| 3 | Integration — Twelve Data source, raw envelope, normaliser | Not started |
+| 4 | Query layer — as-of reads, adjustment, **8 temporal tests** | Not started |
+| 5 | Application — Lambda, schedule, CLI | Not started |
+| 6 | Hardening — reprocess, compaction, rebuild-from-raw proof | Not started |
+| 7 | SEC EDGAR fundamentals | Not started |
 
-Stage 1 is the part worth reading. It runs entirely locally against Parquet fixtures — no
-AWS account, no API key, no cost — and its test suite *is* the specification.
+Stage 4 is the part worth reading: its test suite *is* the specification. The temporal rules
+themselves are fixed earlier, in Stage 2, because they are not a feature of the read path —
+they are the schema.
 
 ## Stack
 

@@ -373,19 +373,27 @@ configuration with local state creates the state bucket.
 
 ## 9. Stages
 
+Foundations first: infrastructure, then the data layer, then integrations, and only then the
+application that orchestrates them.
+
 | Stage | Deliverable | AWS |
 |---|---|---|
-| **0** | Repo, solution skeleton, CI, README | No |
-| **1** | Domain + query layer + **all 8 temporal tests** on local Parquet fixtures | **No** |
-| **2** | Twelve Data source, normaliser, raw envelope, CLI (`watchlist`, `backfill`, `query`) against the local filesystem | No |
-| **3** | Terraform: bootstrap, S3, DynamoDB, Lambda, EventBridge, IAM, alarms, log retention. Storage swaps to S3 behind the same interface. First scheduled run | Yes |
-| **4** | `reprocess` and `compact`, rebuild-from-raw proof, run records to S3, GitHub OIDC | Yes |
-| **5+** | EDGAR fundamentals via bulk archives; Layer 1 complete | Yes |
+| **0** | Repo, solution skeleton, pinned package baseline, CI | No |
+| **1** | **Infrastructure.** Terraform: bootstrap state bucket, S3, DynamoDB, IAM, billing alarms, log retention. Deployed and verified | Yes |
+| **2** | **Data layer.** Domain entities and temporal rules, Parquet schemas, `IRawStore` / `ICuratedStore` over local disk and S3, DynamoDB repositories (instruments, bitemporal watchlist, cursors, runs). Round-tripped against LocalStack | Yes |
+| **3** | **Integration.** Real-key vendor verification, `TwelveDataPriceSource`, raw envelope, `IPriceNormaliser`, content hashing, cursor advance | Yes |
+| **4** | **Query layer.** As-of reads over DuckDB, adjustment calculation, **all 8 temporal tests** | No |
+| **5** | **Application.** Lambda handler, EventBridge schedule, CLI (`watchlist`, `backfill`, `query`). First unattended run | Yes |
+| **6** | **Hardening.** `reprocess`, `compact`, rebuild-from-raw proof, run mirroring to S3, GitHub OIDC | Yes |
+| **7+** | EDGAR fundamentals via bulk archives; Layer 1 complete | Yes |
 
-Stage 1 is the part worth showing another engineer, and it requires no AWS account, no API
-key and no money.
+The temporal rules are not deferred to Stage 4 — they *are* the schema, and they are fixed in
+Stage 2 when `prices_daily`, `corporate_actions` and the watchlist keys are defined. Stage 4
+implements and proves the read path over a data layer that already encodes them. Concretely:
+tests 1, 2, 6 and 7 (no lookahead, restatement visibility, deterministic tiebreak, rebuild
+determinism) can be written against fixtures the moment Stage 2 lands, and should be.
 
-**Layer 2 (event studies) must not begin until the Stage 1 test suite passes.** Event studies
+**Layer 2 (event studies) must not begin until the Stage 4 test suite passes.** Event studies
 built on a leaky temporal model produce confident nonsense, which is worse than no analysis
 at all.
 
@@ -402,3 +410,79 @@ at all.
   abstraction should not gain a second implementation until the first has exercised it.
 - **Vendor free tier.** Twelve Data may change or withdraw its free tier without notice.
   Permanent raw retention means such a change costs a parser rewrite, not the data.
+
+---
+
+## 11. Package baseline
+
+Versions verified against NuGet on 2026-09-08. All versions are pinned centrally in
+`Directory.Packages.props`; no project declares a floating version.
+
+### Domain — no dependencies
+
+BCL only: `DateOnly`, `DateTimeOffset`, `TimeProvider`, `decimal`.
+
+*NodaTime 3.3.3 was considered* — its `Instant` / `LocalDate` split models bitemporality
+cleanly. Rejected because `DateOnly` vs `DateTimeOffset` already provides the compile-time
+separation that motivated the language choice, and a second date vocabulary would obscure it.
+The Domain project's dependency count staying at zero is itself the point.
+
+### Storage
+
+| Package | Version | Why |
+|---|---|---|
+| `Parquet.Net` | 6.1.0 | Pure managed; no native dependency, so the Lambda package needs no layer |
+| `AWSSDK.S3` | 4.0.102 | |
+| `AWSSDK.DynamoDBv2` | 4.0.103 | |
+| `AWSSDK.Extensions.NETCore.Setup` | 4.0.101 | DI registration for AWS clients |
+
+### Sources
+
+| Package | Version | Why |
+|---|---|---|
+| `Microsoft.Extensions.Http.Resilience` | 10.9.0 | Standard resilience handler over `HttpClient`; wraps Polly 8. Preferred to raw `Polly` — the vendor call needs retry and timeout, not a bespoke pipeline |
+| `AWSSDK.SimpleSystemsManagement` | 4.0.103 | SSM Parameter Store (SecureString) for the API key |
+
+`System.Text.Json` from the BCL. No third-party JSON dependency.
+
+### Query
+
+| Package | Version | Why |
+|---|---|---|
+| `DuckDB.NET.Data.Full` | 1.5.5 | Bundles the native DuckDB binary. The `.Full` variant is deliberate — it removes any separate native-install step for a research tool run on a laptop |
+
+### Lambda
+
+| Package | Version |
+|---|---|
+| `Amazon.Lambda.Core` | 3.3.0 |
+| `Amazon.Lambda.Serialization.SystemTextJson` | 3.0.1 |
+
+Managed .NET 10 runtime, class-library handler, ARM64. **Native AOT is deliberately not
+used**: cold start is irrelevant for a once-daily scheduled job, and Parquet.Net's
+reflection-based serialisation paths are a poor AOT fit. Trimming risk for no benefit.
+
+### CLI
+
+`System.CommandLine` 2.0.11 — reached stable after a long preview; first-party and light.
+
+*Spectre.Console.Cli 0.55.0 was considered* for nicer rendering, but it remains pre-1.0 and
+this CLI is utilitarian.
+
+### Testing
+
+| Package | Version | Why |
+|---|---|---|
+| `xunit.v3` | 4.0.0 | |
+| `xunit.runner.visualstudio` | latest | Shared across v2/v3; there is no v3-specific runner package |
+| `Microsoft.NET.Test.Sdk` | 18.9.0 | |
+| `Shouldly` | 4.3.0 | MIT. **Not FluentAssertions** — v8 moved to the Xceed Community License, US$129.95/developer/year for commercial use. `AwesomeAssertions` 9.6.0 is an MIT fork of v7 but is explicitly frozen with no further development |
+| `Microsoft.Extensions.TimeProvider.Testing` | 10.9.0 | `FakeTimeProvider`. **Non-negotiable**: every `observed_at` in a test must come from an injected clock. A test that reaches for `DateTimeOffset.UtcNow` cannot assert anything about a temporal model |
+| `Testcontainers.LocalStack` | 4.15.0 | S3 and DynamoDB integration tests without touching a real account. Requires Docker |
+| `coverlet.collector` | 10.0.1 | |
+
+### Hosting
+
+`Microsoft.Extensions.Hosting` 10.0.11 — one composition root shared by the CLI and the
+Lambda handler, so both resolve the same `IPriceSource`, `IPriceNormaliser` and store
+implementations.
