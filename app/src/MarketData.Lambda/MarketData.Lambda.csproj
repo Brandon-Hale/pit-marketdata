@@ -1,13 +1,19 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
+    <!--
+      A library, not an executable: the managed dotnet10 runtime hosts this assembly and
+      calls the handler by name. Amazon.Lambda.RuntimeSupport is deliberately absent, since
+      that is the custom-runtime path. It needs an executable named bootstrap on
+      provided.al2023, and is a heavier cold start for no benefit here.
+    -->
     <AssemblyName>MarketData.Lambda</AssemblyName>
+    <RootNamespace>MarketData.Lambda</RootNamespace>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Amazon.Lambda.Core" />
-    <PackageReference Include="Amazon.Lambda.RuntimeSupport" />
     <PackageReference Include="Amazon.Lambda.Serialization.SystemTextJson" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
   </ItemGroup>
