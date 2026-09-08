@@ -10,13 +10,11 @@ public sealed class CuratedSource
 {
     private readonly string _prefix;
     private readonly bool _isS3;
-    private readonly string? _endpoint;
 
-    private CuratedSource(string prefix, bool isS3, string? endpoint = null)
+    private CuratedSource(string prefix, bool isS3)
     {
         _prefix = prefix;
         _isS3 = isS3;
-        _endpoint = endpoint;
     }
 
     /// <summary>A directory on disk. Used by tests and offline work.</summary>
@@ -24,17 +22,17 @@ public sealed class CuratedSource
         new(root.Replace('\\', '/').TrimEnd('/'), isS3: false);
 
     /// <summary>
-    /// An S3 bucket, read in place through DuckDB's httpfs extension.
+    /// An S3 bucket, read in place through DuckDB's httpfs extension using the ambient
+    /// AWS credential chain.
     /// </summary>
-    /// <param name="endpoint">
-    /// Intended to point httpfs at LocalStack, but DuckDB ignores it and reaches real AWS
-    /// regardless — a LocalStack run fails with AWS's own <c>InvalidAccessKeyId: "test"</c>.
-    /// Kept because the emitted secret is still correct if a future DuckDB honours it, but
-    /// do not rely on it: read-path equivalence is checked against a scratch bucket in real
-    /// S3 instead. Production leaves this null.
-    /// </param>
-    public static CuratedSource S3(string bucket, string? endpoint = null) =>
-        new($"s3://{bucket}", isS3: true, endpoint);
+    /// <remarks>
+    /// There is no endpoint override. DuckDB's httpfs ignores <c>ENDPOINT</c> on an S3
+    /// secret and contacts real AWS regardless, so pointing it at LocalStack is not
+    /// possible — an attempt fails with AWS's own <c>InvalidAccessKeyId</c>. Read-path
+    /// equivalence is checked against a scratch bucket in real S3 instead; see
+    /// <c>S3ReadPathTests</c>.
+    /// </remarks>
+    public static CuratedSource S3(string bucket) => new($"s3://{bucket}", isS3: true);
 
     /// <summary>Glob matching every Parquet part of one dataset.</summary>
     public string Glob(string dataset) =>
@@ -53,17 +51,9 @@ public sealed class CuratedSource
         // INSTALL reaches extensions.duckdb.org on first use and caches under ~/.duckdb.
         // Acceptable locally and in CI; a Lambda must ship the extension instead. See the
         // risks section of the Stage 4 design.
-        // SCOPE binds the secret to this prefix explicitly; without it DuckDB can fall
-        // back to no credentials and the read fails 403. REGION is stated rather than
-        // inferred because a custom endpoint has no region to infer from.
-        command.CommandText = _endpoint is null
-            ? "INSTALL httpfs; LOAD httpfs; " +
-              $"CREATE OR REPLACE SECRET s3 (TYPE s3, PROVIDER credential_chain, " +
-              $"SCOPE '{_prefix}');"
-            : "INSTALL httpfs; LOAD httpfs; " +
-              $"CREATE OR REPLACE SECRET s3 (TYPE s3, KEY_ID 'test', SECRET 'test', " +
-              $"REGION 'us-east-1', ENDPOINT '{_endpoint}', URL_STYLE 'path', " +
-              $"USE_SSL false, SCOPE '{_prefix}');";
+        command.CommandText =
+            "INSTALL httpfs; LOAD httpfs; " +
+            $"CREATE OR REPLACE SECRET s3 (TYPE s3, PROVIDER credential_chain, SCOPE '{_prefix}');";
 
         command.ExecuteNonQuery();
     }
