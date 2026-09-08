@@ -77,10 +77,20 @@ no queue, no reserved-concurrency throttle beyond `1`.
 hash would differ every day (a new bar is appended) and re-ingest all 2,936 rows. Daily runs
 therefore request `start_date = cursor` only; full history is for backfill.
 
-**Open risk.** Verification used the `demo` key, which may be more permissive than a real
-free key. **The first task of Stage 2 is re-running those three calls with a real key.** If
-splits or dividends turn out to be gated, corporate actions fall back to manual entry via
-the CLI with `source = MANUAL` — a legitimate mode for a point-in-time store in any case.
+**Resolved 2026-09-08.** The three calls were re-run with a real free-tier key via
+`scripts/verify-vendor.sh`: `/time_series`, `/splits` and `/dividends` all returned data.
+Nothing is gated, so the `source = MANUAL` fallback for corporate actions is **not** needed
+and corporate actions stay in this stage. The key is stored at
+`/pit-marketdata/twelvedata/apikey` in SSM as a `SecureString`.
+
+Two payload details the live responses settled, both of which the parsers depend on:
+
+- Prices and volume arrive as exact decimal **strings** (`"328.31000"`, `"39551800"`), which
+  is what makes the parse-to-`decimal` rule work without float error.
+- `/splits` reports `ratio` as a **rounded JSON number** — a 7-for-1 split comes back as
+  `0.14286`, not `1/7` — while `from_factor` and `to_factor` are exact integers. Parsers
+  must derive the ratio from the factors; trusting `ratio` pushes a rounding error into every
+  downstream adjustment factor. `/splits` keys its date as `date`, `/dividends` as `ex_date`.
 
 ---
 
