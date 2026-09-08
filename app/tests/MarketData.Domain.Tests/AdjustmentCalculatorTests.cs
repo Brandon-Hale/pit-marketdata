@@ -74,4 +74,65 @@ public sealed class AdjustmentCalculatorTests
 
         AdjustmentCalculator.SplitFactor([malformed], new DateOnly(2020, 6, 15)).ShouldBe(1m);
     }
+
+    private static CorporateAction Dividend(DateOnly exDate, decimal amount) => new(
+        "AAPL", exDate, CorporateActionType.Dividend, null, amount, "USD", "twelvedata",
+        new DateTimeOffset(exDate.ToDateTime(new TimeOnly(20, 15)), TimeSpan.Zero),
+        ObservationKind.Inferred, "run-1", "raw/x.json");
+
+    [Fact]
+    public void A_dividend_scales_by_one_minus_its_yield()
+    {
+        var div = Dividend(new DateOnly(2020, 8, 7), 0.205m);
+
+        var factor = AdjustmentCalculator.DividendFactor(
+            [div], new DateOnly(2020, 6, 15), _ => 100m);
+
+        // 1 - 0.205/100 = 0.99795
+        factor.ShouldBe(0.99795m);
+    }
+
+    [Fact]
+    public void Dividend_factors_compound()
+    {
+        var a = Dividend(new DateOnly(2020, 8, 7), 0.205m);
+        var b = Dividend(new DateOnly(2020, 11, 6), 0.205m);
+
+        var factor = AdjustmentCalculator.DividendFactor(
+            [a, b], new DateOnly(2020, 6, 15), _ => 100m);
+
+        factor.ShouldBe(0.99795m * 0.99795m);
+    }
+
+    [Fact]
+    public void A_dividend_on_or_before_the_bar_date_is_not_applied()
+    {
+        var div = Dividend(new DateOnly(2020, 6, 15), 0.205m);
+
+        AdjustmentCalculator.DividendFactor([div], new DateOnly(2020, 6, 15), _ => 100m)
+            .ShouldBe(1m);
+    }
+
+    [Fact]
+    public void A_missing_prior_close_contributes_nothing_rather_than_guessing()
+    {
+        var div = Dividend(new DateOnly(2020, 8, 7), 0.205m);
+
+        AdjustmentCalculator.DividendFactor([div], new DateOnly(2020, 6, 15), _ => null)
+            .ShouldBe(1m);
+    }
+
+    [Fact]
+    public void Factor_selects_by_adjustment_mode()
+    {
+        var actions = new[] { FourForOne, Dividend(new DateOnly(2020, 8, 7), 0.205m) };
+        var bar = new DateOnly(2020, 6, 15);
+
+        AdjustmentCalculator.Factor(actions, bar, PriceAdjustment.None, _ => 100m)
+            .ShouldBe(1m);
+        AdjustmentCalculator.Factor(actions, bar, PriceAdjustment.SplitsOnly, _ => 100m)
+            .ShouldBe(0.25m);
+        AdjustmentCalculator.Factor(actions, bar, PriceAdjustment.SplitsAndDividends, _ => 100m)
+            .ShouldBe(0.25m * 0.99795m);
+    }
 }
