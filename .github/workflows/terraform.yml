@@ -1,0 +1,27 @@
+name: terraform
+
+on:
+  push:
+    branches: [main]
+    paths: ['infra/terraform/**']
+  pull_request:
+    paths: ['infra/terraform/**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.14.8
+
+      - name: Format check
+        run: terraform fmt -check -recursive
+
+      - name: Validate
+        run: terraform init -backend=false && terraform validate
