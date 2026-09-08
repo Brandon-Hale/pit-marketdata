@@ -5,11 +5,10 @@ correctly: **what was knowable about instrument X on date D?**
 
 ## Current state
 
-**All 19 tasks of the Layer 1 foundations plan are implemented.** Stages 0-3 are
-complete. Work is on branch `layer1-foundations` (PR #1), CI green.
+**Stages 0-4 are complete.** Work is on branch `stage4-asof-query`, CI green.
 
-**59 tests, 59 passing in CI** (which has Docker, so the LocalStack tests run for
-real). Locally without Docker: 50 pass, 9 skip.
+**103 tests, all passing in CI** (which has Docker, so the LocalStack tests run for
+real). Locally without Docker: 93 pass, 10 skip.
 
 | Stage | | Status |
 |---|---|---|
@@ -17,34 +16,32 @@ real). Locally without Docker: 50 pass, 9 skip.
 | 1 | Terraform, **applied to AWS** | Done |
 | 2 | Domain facts, clock, stores, Parquet, DuckDB | Done |
 | 3 | Vendor integration, parsing, ingest orchestration | Done |
-| 4-6 | Query layer, adjustments, Lambda, CLI | **Next plan** |
+| 4 | As-of query, adjustment, the **eight temporal tests** | Done |
+| 5 | Lambda, EventBridge schedule, IAM, CLI | **Next** |
+| 6 | Reprocess, compaction, rebuild-from-raw proof | Not started |
 
-There is deliberately **no runnable application yet**. Everything under `app/src`
-is a class library. The as-of query layer, the eight temporal tests, the Lambda
-and the CLI are Stages 4-6. Do not build them early.
+There is still **no runnable application**. Everything under `app/src` is a class library;
+Stage 5 adds the Lambda and the CLI. Stage 5 has no spec or plan yet.
 
 ### Live AWS resources (region ap-southeast-2 = Sydney)
 
 - `pit-marketdata-tfstate-bzun6w` - Terraform state, versioned
-- `pit-marketdata-data-bzun6w` - holds `raw/` and `curated/`
+- `pit-marketdata-data-bzun6w` - holds `raw/` and `curated/`, currently empty
 - `pit-marketdata-marketdata` - DynamoDB, PAY_PER_REQUEST, PITR on
 - Two billing alarms in **us-east-1** at USD 5 and 20, SNS subscription confirmed
 - `/pit-marketdata/twelvedata/apikey` in SSM as a `SecureString`
 
-Billing alarms must live in us-east-1: AWS publishes `EstimatedCharges` only
-there, and only in USD. There is no AUD series, so an AUD alarm would silently
-never fire. Running cost today is effectively $0/month - every line sits inside a
-permanent free allowance.
+Billing alarms must live in us-east-1: AWS publishes `EstimatedCharges` only there, and only
+in USD. There is no AUD series, so an AUD alarm would silently never fire. Running cost is
+effectively $0/month - every line sits inside a permanent free allowance.
 
 ## Disk space warning
 
-The dev machine runs with **under 1 GB free on C:**. `DuckDB.NET.Data.Full` copies
-~315 MB of native binaries for five platforms into the output of every project
-that references it, which has filled the disk mid-build. Only
-`MarketData.Storage.Tests` references it, deliberately - do not add it to a second
-project. Run `dotnet build-server shutdown` then delete `app/**/bin` and
-`app/**/obj` to reclaim ~600 MB. The NuGet cache is a further 3.5 GB
-(`dotnet nuget locals all --clear`).
+`DuckDB.NET.Data.Full` copies ~315 MB of native binaries for five platforms into the output
+of every **executable** project that references it - measured at 327 MB per test project,
+but only 68 KB for a library. Three test projects now carry it. Run
+`dotnet build-server shutdown` then delete `app/**/bin` and `app/**/obj` to reclaim it. The
+NuGet cache is a further 3.5 GB (`dotnet nuget locals all --clear`).
 
 ## Start here
 
@@ -69,11 +66,17 @@ nothing throws, the numbers just become wrong.
   timestamp decision lives separately in `ObservationPolicy`.
 - **Append-only.** No code path updates or deletes a curated row. A restatement is a new row.
 - **Prices are stored unadjusted**, parsed to `decimal` from the vendor's exact decimal
-  strings. Never `double`. Never store vendor-adjusted prices.
-  **Open issue:** verified 2026-09-08 that Twelve Data's `/time_series` returns
-  **split-adjusted** prices with no way to disable it, so this rule is currently violated at
-  the source. Stage 4 must un-adjust on ingest using the splits dataset and each envelope's
-  `observed_at`. See the correction in the spec's §3.
+  strings. Never `double`. Never store vendor-adjusted prices. Twelve Data's
+  `/time_series` returns **split-adjusted** prices with no way to disable it, so
+  `IngestService` divides by the same-run split factor to recover what was quoted that day,
+  and records the splits envelope in `SplitsRawKey` so a rebuild redoes identical
+  arithmetic. Ingest divides; query multiplies. A round-trip test guards the pair.
+- **`ObservationMode` applies to bars only, never to corporate actions.** Every backfilled
+  action is `INFERRED` because its `observed_at` is its ex-date, so filtering actions under
+  `ObservedOnly` would find no splits, apply a factor of 1.0, and return unadjusted prices
+  labelled as adjusted. Nothing would throw.
+- **`asOf` is never optional.** `IMarketDataQuery` has no overload without it, and any
+  future API must reject a request that omits it rather than defaulting to now.
 - **A restatement never gets an inferred timestamp** — it takes the real fetch time. Inferring
   one would claim a corrected value was knowable at the original date.
 - **No `DateTime.UtcNow` / `DateTimeOffset.UtcNow`** outside a composition root. All time comes
@@ -148,13 +151,6 @@ The plan was written before these were known. Do not "fix" the code back.
   reports `0.14286`. Parse `from_factor`/`to_factor` (exact integers) instead and
   derive the ratio, or the adjustment maths inherits the rounding error.
 - **Dividends** use `ex_date` and a numeric `amount`.
-
-## Known soft spot
-
-Task 19's `IngestService` approximates "what do I already know?" from the cursor watermark
-rather than a real per-date lookup, because the query layer does not exist yet. It catches the
-common restatement case but not every one. This is deliberate and is listed in the plan's
-deferred section — fix it in the next plan, don't paper over it now.
 
 ---
 

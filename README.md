@@ -50,7 +50,9 @@ Two supporting rules do most of the remaining work:
 - **Prices are stored unadjusted.** Corporate actions live in a separate dataset, and
   adjustment factors are computed at query time from only those actions known as at `asOf`.
   Vendor-adjusted history is rewritten after every corporate action, which is precisely what
-  makes it irreproducible.
+  makes it irreproducible. Twelve Data returns split-adjusted prices, so ingest divides by
+  the split factor to recover what was actually quoted, and records which splits payload it
+  used so a rebuild redoes identical arithmetic.
 - **`observed_at` is stamped at fetch time into an immutable raw payload**, then copied
   through. Normalisation is a pure function of the raw store, so the curated data can be
   dropped and rebuilt byte-identically, years later, with no vendor calls.
@@ -59,7 +61,7 @@ Two supporting rules do most of the remaining work:
 
 ## Status
 
-**Stages 0–3 are complete.** 59 tests, green in CI. Infrastructure is applied and live.
+**Stages 0–4 are complete.** 103 tests, green in CI. Infrastructure is applied and live.
 
 | Stage | Deliverable | Status |
 |---|---|---|
@@ -67,27 +69,18 @@ Two supporting rules do most of the remaining work:
 | 1 | Infrastructure — Terraform: S3, DynamoDB, billing alarms | ✅ Done, applied |
 | 2 | Data layer — domain, Parquet schemas, stores, repositories | ✅ Done |
 | 3 | Integration — Twelve Data source, raw envelope, normalisers, ingest | ✅ Done |
-| 4 | Query layer — as-of reads, adjustment, **8 temporal tests** | ⬚ Next |
-| 5 | Application — Lambda, schedule, CLI | ⬚ Not started |
+| 4 | Query layer — as-of reads, adjustment, **8 temporal tests** | ✅ Done |
+| 5 | Application — Lambda, schedule, CLI | ⬚ Next |
 | 6 | Hardening — reprocess, compaction, rebuild-from-raw proof | ⬚ Not started |
 | 7 | SEC EDGAR fundamentals | ⬚ Not started |
 
 **There is deliberately no runnable application yet.** Everything in `app/src` is a class
-library. The CLI and the scheduled Lambda are Stage 5; the as-of query that makes the whole
-thing useful is Stage 4.
+library. The CLI and the scheduled Lambda are Stage 5.
 
-Stage 4 is the part worth reading when it lands: its test suite *is* the specification. The
-temporal rules themselves are already fixed, in Stage 2, because they are not a feature of
-the read path — they are the schema.
-
-### Open correctness issue
-
-Verification against the live vendor API on 2026-09-08 established that Twelve Data's
-`/time_series` returns **split-adjusted** prices, not unadjusted ones as the design assumed,
-with no parameter to disable it. Stage 4 must un-adjust on the way in, using the splits
-dataset and each envelope's `observed_at`. Nothing is lost — the un-adjust is arithmetically
-recoverable — but it is a real change to the ingest path and is
-[recorded in the design](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md#3-vendor-twelve-data-free-tier).
+Stage 4's test suite *is* the specification — the eight temporal tests in
+`app/tests/MarketData.Query.Tests/TemporalTests.cs` are what makes the guarantee real rather
+than aspirational. The temporal rules themselves were fixed earlier, in Stage 2, because they
+are not a feature of the read path — they are the schema.
 
 ---
 
@@ -109,10 +102,29 @@ flowchart TD
 
     style R fill:#2d3748,color:#fff
     style C fill:#2d3748,color:#fff
-    style Q stroke-dasharray: 5 5
 ```
 
-The dashed box is Stage 4 — not built yet. Everything above it is.
+### The two answers, as real code
+
+```csharp
+var query = new DuckDbMarketDataQuery(CuratedSource.S3("pit-marketdata-data-bzun6w"));
+var day = new DateOnly(2020, 6, 15);
+
+// What was knowable on 2020-07-01: the split had not happened yet.
+await query.GetPricesAsync("AAPL", day, day,
+    asOf: new DateTimeOffset(2020, 7, 1, 0, 0, 0, TimeSpan.Zero),
+    PriceAdjustment.SplitsOnly, ObservationMode.All, ct);
+// -> close 342.99
+
+// What is knowable now: the 4-for-1 is applied.
+await query.GetPricesAsync("AAPL", day, day,
+    asOf: DateTimeOffset.UtcNow,
+    PriceAdjustment.SplitsOnly, ObservationMode.All, ct);
+// -> close 85.7475
+```
+
+Note there is no overload without `asOf`. That is deliberate: a convenience method
+defaulting it to "now" would reintroduce lookahead bias at every call site.
 
 ### Why fetching and parsing are separate
 

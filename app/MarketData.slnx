@@ -1,12 +1,14 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MarketData.Domain/MarketData.Domain.csproj" />
+    <Project Path="src/MarketData.Query/MarketData.Query.csproj" />
     <Project Path="src/MarketData.Sources/MarketData.Sources.csproj" />
     <Project Path="src/MarketData.Storage/MarketData.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MarketData.Domain.Tests/MarketData.Domain.Tests.csproj" />
     <Project Path="tests/MarketData.Integration.Tests/MarketData.Integration.Tests.csproj" />
+    <Project Path="tests/MarketData.Query.Tests/MarketData.Query.Tests.csproj" />
     <Project Path="tests/MarketData.Sources.Tests/MarketData.Sources.Tests.csproj" />
     <Project Path="tests/MarketData.Storage.Tests/MarketData.Storage.Tests.csproj" />
   </Folder>

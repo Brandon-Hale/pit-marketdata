@@ -16,4 +16,5 @@ public sealed class PriceRow
     public string ObservedAtKind { get; set; } = string.Empty;
     public string IngestId { get; set; } = string.Empty;
     public string RawKey { get; set; } = string.Empty;
+    public string SplitsRawKey { get; set; } = string.Empty;
 }

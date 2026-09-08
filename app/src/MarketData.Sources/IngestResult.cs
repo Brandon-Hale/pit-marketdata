@@ -6,4 +6,5 @@ public sealed record IngestResult(
     bool SkippedUnchanged,
     int RowsWritten,
     string? RawKey,
-    IReadOnlyList<string> CuratedKeys);
+    IReadOnlyList<string> CuratedKeys,
+    int ActionsWritten = 0);

@@ -11,6 +11,12 @@ public sealed record ObservationDecision(DateTimeOffset ObservedAt, ObservationK
 public sealed class ObservationPolicy(IPublicationClock clock, TimeSpan liveWindow)
 {
     /// <summary>
+    /// The clock behind inferred timestamps, reused to stamp corporate actions. Exposed
+    /// so IngestService need not be handed the same clock a second time.
+    /// </summary>
+    public IPublicationClock Clock => clock;
+
+    /// <summary>
     /// Returns null when nothing was learned — the value is already known and unchanged.
     /// </summary>
     public ObservationDecision? Decide(
