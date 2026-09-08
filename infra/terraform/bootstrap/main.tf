@@ -11,6 +11,15 @@ terraform {
 
 provider "aws" {
   region = var.region
+
+  # Matches the root configuration, so the state bucket shows up alongside the
+  # resources it tracks under one Project tag filter.
+  default_tags {
+    tags = {
+      Project   = var.project
+      ManagedBy = "terraform"
+    }
+  }
 }
 
 resource "aws_s3_bucket" "state" {
