@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>marketdata</AssemblyName>
+    <RootNamespace>MarketData.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarketData.Hosting\MarketData.Hosting.csproj" />
+    <ProjectReference Include="..\MarketData.Query\MarketData.Query.csproj" />
+  </ItemGroup>
+
+</Project>
