@@ -70,8 +70,8 @@ itself on weekdays at 22:15 UTC, after the US close.
 ### Track a symbol
 
 ```bash
-marketdata watchlist add MSFT                 # start tracking it
-marketdata backfill MSFT --from 2015-01-01    # fetch history once, ~14s for 2,900 bars
+marketdata watchlist add NVDA                 # start tracking it
+marketdata backfill NVDA --from 2015-01-01    # fetch history once, ~14s for 2,900 bars
 ```
 
 Two steps on purpose. `watchlist add` means *track this from now on*; `backfill` means *and go
@@ -96,6 +96,27 @@ that day re-based for the split it did not yet know about. Volume moves inversel
 Nothing in the query mentions splits. The `asOf` filter runs over prices **and** corporate
 actions, the split is simply invisible before its ex-date, and the arithmetic falls out.
 
+### Corporate actions the vendor will not sell you
+
+Twelve Data's free tier serves splits and dividends for **AAPL only** and answers 403 for
+everything else. Its prices are split-adjusted, so any other symbol needs its split history
+from somewhere or the stored prices would be adjusted values labelled as unadjusted.
+
+Enter them by hand. Splits are public and announced weeks ahead, so this costs minutes a year:
+
+```bash
+marketdata action add NVDA  --ex-date 2024-06-10 --split --from 1 --to 10
+marketdata action add AMZN  --ex-date 2022-06-06 --split --from 1 --to 20
+```
+
+Factors rather than a ratio, because 1/7 cannot be typed as a decimal without carrying
+rounding into every adjusted price derived from it. A hand-entered action is a first-class
+fact — same `observed_at` (the ex-date), same `INFERRED` kind, same append-only semantics —
+differing only in `source = MANUAL`. The query layer cannot tell them apart.
+
+Ingest **fails loudly** for a symbol with no split history rather than storing adjusted
+prices as if they were raw.
+
 ### Other options
 
 ```bash
@@ -105,6 +126,10 @@ marketdata query AAPL --on 2020-06-15 --as-of 2026-09-08 --adjust all    # + div
 marketdata query AAPL --from 2026-09-01 --to 2026-09-08 --as-of 2026-09-08 --observed-only
 marketdata watchlist list --as-of 2020-01-01    # what was being tracked back then
 ```
+
+`--as-of` is **UTC** unless you give an offset. `2024-06-08` means `2024-06-08T00:00:00Z`,
+not local midnight — every timestamp in the store is UTC, and reading input in the machine's
+zone would silently shift the answer.
 
 **`--as-of` is required on `query`** and the command errors without it. There is no overload
 without it in the library either. A convenience default of "now" is exactly how lookahead bias
@@ -280,6 +305,9 @@ Recorded as decisions, not discovered later.
   the fix, and a periodic wider `backfill` catches them meanwhile.
 - **No alerting.** Run records capture errors, but nothing reads them. A failed run is found
   by looking.
+- **Corporate actions are hand-entered for every symbol but AAPL**, because the vendor's free
+  tier paywalls them. Nothing checks that a split has been recorded before its ex-date, so a
+  missed one silently leaves prices unadjusted from that day.
 - **Reserved concurrency is unset.** Two concurrent runs would both advance the same cursor,
   so `1` is correct — but a new AWS account's total concurrency quota is 10 and AWS refuses a
   reservation leaving fewer than 10 unreserved.

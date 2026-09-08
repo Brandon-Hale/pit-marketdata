@@ -77,6 +77,35 @@ no queue, no reserved-concurrency throttle beyond `1`.
 hash would differ every day (a new bar is appended) and re-ingest all 2,936 rows. Daily runs
 therefore request `start_date = cursor` only; full history is for backfill.
 
+> ### Correction, 2026-09-08: corporate actions are paywalled for all but AAPL
+>
+> The "Resolved" note below is **incomplete**. `scripts/verify-vendor.sh` hardcodes AAPL, so
+> the check that `/splits` and `/dividends` work verified them on the one symbol where they
+> happen to be free.
+>
+> Measured across eight symbols: `/splits` and `/dividends` return **403** for every symbol
+> except AAPL, with the message *"available exclusively with grow or pro or ultra or venture
+> or enterprise plans"*. MSFT and SPY included. `/time_series` and `/quote` remain free for
+> any symbol.
+>
+> Combined with the split-adjustment correction below, this means **no symbol other than AAPL
+> can be ingested correctly from the free tier alone** — its prices would be split-adjusted
+> values stored as though unadjusted.
+>
+> **Resolution, as the original risk paragraph anticipated:** corporate actions are entered
+> by hand via `marketdata action add`, with `source = MANUAL`. They are ordinary facts —
+> same `observed_at` (the ex-date), same `INFERRED` kind, same append-only semantics — and
+> the query layer cannot distinguish them. A 403 is now `VendorNotEntitledException`, and
+> `IngestService` falls back to recorded actions when a lookup is supplied and **fails
+> loudly** when one is not: ingesting without a split history is never acceptable.
+>
+> Four hand-entered rows unblocked NVDA, AMZN, GOOGL and NBIS. Verified against the real
+> record: NVDA 2024-06-07 stores 1208.88 and returns 120.888 as at today; AMZN 2022-06-03
+> stores 2447 and returns 122.35.
+>
+> Splits are rare and announced weeks ahead, so keeping up costs minutes a year. The
+> alternative is a paid plan.
+
 > ### Correction, 2026-09-08: `/time_series` returns SPLIT-ADJUSTED prices
 >
 > The "unadjusted by default" claim above was **wrong**, and it was the assumption the
