@@ -5,35 +5,36 @@ correctly: **what was knowable about instrument X on date D?**
 
 ## Current state
 
-**Stages 0-4 are complete.** Work is on branch `stage4-asof-query`, CI green.
-
-**103 tests, all passing in CI** (which has Docker, so the LocalStack tests run for
-real). Locally without Docker: 93 pass, 10 skip.
+**Stages 0-5 are complete and deployed.** 151 tests green.
 
 | Stage | | Status |
 |---|---|---|
-| 0 | Repo, build baseline, CI | Done |
-| 1 | Terraform, **applied to AWS** | Done |
-| 2 | Domain facts, clock, stores, Parquet, DuckDB | Done |
-| 3 | Vendor integration, parsing, ingest orchestration | Done |
-| 4 | As-of query, adjustment, the **eight temporal tests** | Done |
-| 5 | Lambda, EventBridge schedule, IAM, CLI | **Next** |
-| 6 | Reprocess, compaction, rebuild-from-raw proof | Not started |
+| 0-3 | Repo, Terraform, data layer, vendor integration | Done |
+| 4 | As-of query, adjustment, the eight temporal tests | Done |
+| 5 | Lambda, EventBridge schedule, IAM, CLI | Done, deployed |
+| 6 | Reprocess, compaction, rebuild-from-raw proof | **Next**, no spec yet |
 
-There is still **no runnable application**. Everything under `app/src` is a class library;
-Stage 5 adds the Lambda and the CLI. Stage 5 has no spec or plan yet.
+There is **real data in the warehouse**: AAPL from 2015, 2,936 rows, ~1MB across 40 objects.
 
-### Live AWS resources (region ap-southeast-2 = Sydney)
+### Live AWS resources (ap-southeast-2 = Sydney)
 
-- `pit-marketdata-tfstate-bzun6w` - Terraform state, versioned
-- `pit-marketdata-data-bzun6w` - holds `raw/` and `curated/`, currently empty
-- `pit-marketdata-marketdata` - DynamoDB, PAY_PER_REQUEST, PITR on
-- Two billing alarms in **us-east-1** at USD 5 and 20, SNS subscription confirmed
-- `/pit-marketdata/twelvedata/apikey` in SSM as a `SecureString`
+- `pit-marketdata-tfstate-bzun6w` / `pit-marketdata-data-bzun6w` - state and data
+- `pit-marketdata-marketdata` - DynamoDB: watchlist, cursors, run records
+- `pit-marketdata-ingest` - Lambda, managed `dotnet10` runtime, arm64, 512MB, weekdays 22:15 UTC
+- `/aws/lambda/pit-marketdata-ingest` - logs, 14 day retention
+- Two billing alarms in **us-east-1** at USD 5 and 20
+- `/pit-marketdata/twelvedata/apikey` in SSM as a SecureString
 
-Billing alarms must live in us-east-1: AWS publishes `EstimatedCharges` only there, and only
-in USD. There is no AUD series, so an AUD alarm would silently never fire. Running cost is
-effectively $0/month - every line sits inside a permanent free allowance.
+### Running it
+
+```bash
+export MARKETDATA_DATA_BUCKET=pit-marketdata-data-bzun6w
+export MARKETDATA_TABLE_NAME=pit-marketdata-marketdata
+dotnet run --project app/src/MarketData.Cli -- query AAPL --on 2020-06-15 --as-of 2020-07-01
+```
+
+Deploying the Lambda: `./scripts/build-lambda.sh` then `terraform apply` from
+`infra/terraform`.
 
 ## Disk space warning
 
@@ -75,6 +76,23 @@ nothing throws, the numbers just become wrong.
   action is `INFERRED` because its `observed_at` is its ex-date, so filtering actions under
   `ObservedOnly` would find no splits, apply a factor of 1.0, and return unadjusted prices
   labelled as adjusted. Nothing would throw.
+- **The Lambda uses the managed `dotnet10` runtime, not a custom one.** It is a library, not
+  an executable: no `Main`, no `LambdaBootstrap`, no `Amazon.Lambda.RuntimeSupport`. The
+  handler is `MarketData.Lambda::MarketData.Lambda.Function::HandleAsync` and the serializer
+  is declared at assembly level. Published package is 6.3MB.
+- **The Lambda must never reference DuckDB**, directly or transitively. An architecture test
+  enforces it, paired with a second test proving the same walk finds DuckDB in
+  MarketData.Query, so a passing guard means something.
+- **An empty vendor window is not an error.** Twelve Data answers a date range with no bars
+  using HTTP 400 and "No data is available", not an empty 200. Since the cursor sits at the
+  latest bar, incremental runs ask for empty windows constantly. `VendorNoDataException`
+  turns that into a skip; any other 400 still throws.
+- **Prior knowledge is loaded once per symbol, never per date.** Both `PriorKnowledge.From`
+  and `CursorPriorKnowledge.From` cache, and both have counting tests. A per-date version
+  made an eleven-year backfill run over ten minutes and write nothing.
+- **Reserved concurrency is unset** because this account's total Lambda concurrency quota is
+  10 and AWS refuses a reservation leaving fewer than 10 unreserved. Set
+  `reserved_concurrency = 1` once the quota is raised.
 - **`asOf` is never optional.** `IMarketDataQuery` has no overload without it, and any
   future API must reject a request that omits it rather than defaulting to now.
 - **A restatement never gets an inferred timestamp** — it takes the real fetch time. Inferring
