@@ -44,8 +44,19 @@ public sealed class IngestService(
         var splitsEnvelope = await source.FetchSplitsAsync(symbol, ct);
         var splitsRawKey = await rawStore.WriteAsync(splitsEnvelope, runDate, ct);
 
-        var actions = actionsNormaliser.ParseSplits(splitsEnvelope)
-            .Select(a => new CorporateAction(
+        // Dividends are fetched too. They play no part in un-adjusting -- the vendor
+        // adjusts for splits only -- but without them PriceAdjustment.SplitsAndDividends
+        // would find no dividend rows and silently return a splits-only series.
+        var dividendsEnvelope = await source.FetchDividendsAsync(symbol, ct);
+        var dividendsRawKey = await rawStore.WriteAsync(dividendsEnvelope, runDate, ct);
+
+        var actions = ToActions(actionsNormaliser.ParseSplits(splitsEnvelope), splitsRawKey)
+            .Concat(ToActions(actionsNormaliser.ParseDividends(dividendsEnvelope), dividendsRawKey))
+            .OrderBy(a => a.ExDate)
+            .ToList();
+
+        IEnumerable<CorporateAction> ToActions(IReadOnlyList<ParsedAction> parsedActions, string key) =>
+            parsedActions.Select(a => new CorporateAction(
                 symbol, a.ExDate, a.ActionType, a.Ratio, a.Amount, a.Currency,
                 source.SourceId,
                 // An action's inferred observed_at is its ex-date: it became effective
@@ -53,8 +64,7 @@ public sealed class IngestService(
                 // before the market did.
                 policy.Clock.InferredPublication(a.ExDate),
                 ObservationKind.Inferred,
-                ingestId, splitsRawKey))
-            .ToList();
+                ingestId, key));
 
         var parsed = normaliser.Parse(envelope);
         var bars = new List<DailyBar>(parsed.Count);
