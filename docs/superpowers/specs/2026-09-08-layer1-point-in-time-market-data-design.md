@@ -25,8 +25,9 @@ features, coverage and performance.
   is a test proving it.
 - Price history is reproducible: rerunning an analysis six months later against the same
   `asOf` returns identical numbers.
-- Raw vendor responses are retained permanently and the curated store can be rebuilt from
-  them, byte-identically, without re-fetching.
+- Raw vendor responses are retained permanently and the curated store can be dropped and
+  rebuilt from them, without re-fetching, yielding a logically identical dataset — the same
+  rows, the same values and the same `observed_at` timestamps.
 - Runs unattended on a daily schedule for a negligible monthly cost.
 
 ### Non-goals
@@ -150,8 +151,8 @@ make every historical query silently "know about" a company never heard of at th
 is survivorship bias re-entering through the one table exempted from the append-only rule,
 and it would quietly corrupt Layer 2.
 
-Run records mirror to S3 so the DynamoDB TTL does not delete the audit trail of a system
-built for auditability.
+`RUN#` items carry a 90-day TTL to keep the table small, and are mirrored to S3 on write so
+that expiry does not delete the audit trail of a system built for auditability.
 
 No price or fundamental data in DynamoDB. It is columnar analytical data and belongs in
 Parquet.
@@ -167,13 +168,14 @@ Parquet.
 2. **`observed_at` is stamped by the fetcher into the raw envelope; the normaliser copies
    it.** If the normaliser stamped `UtcNow`, a rebuild in 2028 would produce different
    timestamps and every historical answer would silently change. Stamping at fetch makes
-   normalisation a pure function of raw, so rebuilds are byte-identical. This resolves a
-   direct contradiction in the original spec.
+   normalisation a pure function of raw, so a rebuild reproduces the dataset exactly. This
+   resolves a direct contradiction in the original spec.
 3. **Append-only.** Nothing is updated or deleted. A restatement is a new row with a later
    `observed_at` alongside the original.
-4. **Reads** filter `observed_at <= asOf`, then take the latest row per
-   `(symbol, effective_date)`, **tiebreaking on `ingest_id` descending** so identical
-   timestamps cannot return different rows on different runs.
+4. **Reads** filter `observed_at <= asOf`, then take the latest row per natural key,
+   **tiebreaking on `ingest_id` descending** so identical timestamps cannot return different
+   rows on different runs. The natural key is `(symbol, effective_date)` for `prices_daily`
+   and `(symbol, ex_date, action_type)` for `corporate_actions`.
 5. **Prices are always stored raw unadjusted**, exactly as the vendor returned them.
    Corporate actions live in a separate dataset and adjustment factors are computed at query
    time. Vendors silently rewrite adjusted history after every split and dividend, which
@@ -336,8 +338,11 @@ These are the specification. Write them before the implementation.
 5. **Adjustment is as-of aware.** A corporate action observed after `asOf` is not applied.
 6. **Deterministic tiebreak.** Two rows with identical `observed_at` return the same row on
    every run.
-7. **Rebuild determinism.** Normalising the same raw object twice yields byte-identical
-   Parquet.
+7. **Rebuild determinism.** Normalising the same raw object twice yields an identical row
+   set — same values, same `observed_at`, same `observed_at_kind`. Asserted on rows read
+   back through the query layer, not on file bytes: Parquet embeds a writer-version string
+   and its bytes depend on row ordering and row-group boundaries, so byte-comparison would
+   be both fragile and beside the point.
 8. **`ObservedOnly` excludes `INFERRED`.**
 
 ---
