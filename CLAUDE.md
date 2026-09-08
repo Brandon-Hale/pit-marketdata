@@ -5,18 +5,56 @@ correctly: **what was knowable about instrument X on date D?**
 
 ## Current state
 
-Design and implementation plan are written, reviewed and committed. **No code exists yet.**
-The `src/`, `tests/`, `infra/` and `scripts/` directories are empty placeholders.
+**All 19 tasks of the Layer 1 foundations plan are implemented.** Stages 0-3 are
+complete. Work is on branch `layer1-foundations` (PR #1), CI green.
+
+**59 tests, 59 passing in CI** (which has Docker, so the LocalStack tests run for
+real). Locally without Docker: 50 pass, 9 skip.
+
+| Stage | | Status |
+|---|---|---|
+| 0 | Repo, build baseline, CI | Done |
+| 1 | Terraform, **applied to AWS** | Done |
+| 2 | Domain facts, clock, stores, Parquet, DuckDB | Done |
+| 3 | Vendor integration, parsing, ingest orchestration | Done |
+| 4-6 | Query layer, adjustments, Lambda, CLI | **Next plan** |
+
+There is deliberately **no runnable application yet**. Everything under `app/src`
+is a class library. The as-of query layer, the eight temporal tests, the Lambda
+and the CLI are Stages 4-6. Do not build them early.
+
+### Live AWS resources (region ap-southeast-2 = Sydney)
+
+- `pit-marketdata-tfstate-bzun6w` - Terraform state, versioned
+- `pit-marketdata-data-bzun6w` - holds `raw/` and `curated/`
+- `pit-marketdata-marketdata` - DynamoDB, PAY_PER_REQUEST, PITR on
+- Two billing alarms in **us-east-1** at USD 5 and 20, SNS subscription confirmed
+- `/pit-marketdata/twelvedata/apikey` in SSM as a `SecureString`
+
+Billing alarms must live in us-east-1: AWS publishes `EstimatedCharges` only
+there, and only in USD. There is no AUD series, so an AUD alarm would silently
+never fire. Running cost today is effectively $0/month - every line sits inside a
+permanent free allowance.
+
+## Disk space warning
+
+The dev machine runs with **under 1 GB free on C:**. `DuckDB.NET.Data.Full` copies
+~315 MB of native binaries for five platforms into the output of every project
+that references it, which has filled the disk mid-build. Only
+`MarketData.Storage.Tests` references it, deliberately - do not add it to a second
+project. Run `dotnet build-server shutdown` then delete `app/**/bin` and
+`app/**/obj` to reclaim ~600 MB. The NuGet cache is a further 3.5 GB
+(`dotnet nuget locals all --clear`).
 
 ## Start here
 
-1. Read [`docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md`](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md) — what and why.
-2. Read [`docs/superpowers/plans/2026-09-08-layer1-foundations.md`](docs/superpowers/plans/2026-09-08-layer1-foundations.md) — 19 tasks, 126 steps, Stages 0–3.
-3. Invoke `superpowers:subagent-driven-development` (or `superpowers:executing-plans`) and work the plan from Task 1.
+1. Read [`docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md`](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md) - what and why.
+2. Read [`docs/superpowers/plans/2026-09-08-layer1-foundations.md`](docs/superpowers/plans/2026-09-08-layer1-foundations.md) - 19 tasks, Stages 0-3.
+3. The next plan covers Stages 4-6 and has not been written yet.
 
-Build order is deliberately **foundations first**: repo → Terraform infrastructure → data
-layer → vendor integration. The as-of query layer, the eight temporal tests, the Lambda and
-the CLI are Stages 4–6 and get their own plan after this one lands. Do not build them early.
+There is deliberately **no runnable application yet**. Everything under `app/src`
+is a class library. The Lambda, the CLI and the as-of query layer are Stages 4-6
+and get their own plan. Do not build them early.
 
 ## Non-negotiables
 
@@ -40,28 +78,72 @@ nothing throws, the numbers just become wrong.
   versioned; a leaked key is unrecoverable.
 - **`MarketData.Domain` has zero package references.** An architecture test enforces it.
 
+## Layout
+
+The .NET solution lives under `app/`, not the repo root, so each toolchain owns
+one top-level folder:
+
+```
+app/          MarketData.slnx, Directory.*.props, global.json, src/, tests/
+infra/        Terraform (bootstrap/, modules/storage, modules/observability)
+scripts/      shell helpers
+docs/         spec and plans
+.editorconfig at the ROOT - it carries Terraform and YAML rules too
+```
+
 ## Conventions
 
 - .NET 10, `net10.0`, nullable enabled, warnings as errors.
-- **Central package management** — all versions pinned in `Directory.Packages.props`. After any
-  `dotnet add package`, strip the `Version=` attribute it writes into the `.csproj`.
-- Writes use Parquet.Net; **reads use DuckDB, including in tests**. Parquet.Net 6's class
-  deserializer fails on plain `string` properties, and DuckDB is the production read path.
-- Terraform state uses the S3 backend with `use_lockfile = true`. No DynamoDB lock table.
-- Small, frequent commits — one per task, as the plan specifies.
+- **Central package management** - all versions pinned in `app/Directory.Packages.props`.
+  After any `dotnet add package`, strip the `Version=` attribute it writes.
+- Writes use Parquet.Net; **reads use DuckDB, including in tests**.
+- Terraform state uses the S3 backend with `use_lockfile = true`. No lock table.
+- Small, frequent commits - one per task, as the plan specifies.
+
+## Toolchain facts that contradict the plan
+
+The plan was written before these were known. Do not "fix" the code back.
+
+- **Tests run on Microsoft.Testing.Platform, not VSTest.** The .NET 10 SDK
+  refuses the VSTest target outright, so `Microsoft.NET.Test.Sdk` and
+  `xunit.runner.visualstudio` are deliberately absent from
+  `Directory.Packages.props`. Adding them back breaks `dotnet test`.
+- **`dotnet new sln` emits `MarketData.slnx`**, not `.sln`. The architecture test
+  accepts either.
+- **`.editorconfig` uses `for_non_interface_members`**, not `always`, for
+  accessibility modifiers. "always" makes IDE0040 a build error on every
+  interface member under TreatWarningsAsErrors.
+- **Testcontainers 4.15** takes the image in the `LocalStackBuilder` constructor
+  and supplies its own readiness probe. `Build()` probes Docker eagerly and
+  throws from a field initializer, so it must be constructed inside a try/catch.
+- **DuckDB returns a DATE column as `DateOnly`**, not `DateTime`. The plan says
+  otherwise.
+- **CI runs the whole suite with no category filter.** Filtering emptied the
+  integration assembly, and MTP treats "zero tests ran" as a failure. GitHub's
+  ubuntu-latest has Docker, so the LocalStack tests run for real there.
 
 ## Environment
 
-- **Docker must be running** for the LocalStack integration tests (Task 13 onward). CI skips
-  them via `--filter "Category!=Integration"`.
-- **`gh` lacks the `workflow` scope** as of the last check. Task 2 pushes `.github/workflows/`
-  and will be rejected without it. Run `gh auth refresh -h github.com -s workflow` in an
-  interactive terminal first, then confirm with `gh auth status`.
-- **AWS credentials** are needed from Task 3 (`terraform apply`). Region `ap-southeast-2`.
-- **A real Twelve Data API key** is needed at Task 15. The spec's vendor findings were verified
-  with their `demo` key, which may be more permissive — Task 15 re-verifies with a real key
-  *before* anything is built on it. If splits/dividends turn out to be gated, the documented
-  fallback is manual entry with `source = MANUAL`.
+- **Docker is not available on the Windows dev machine.** The LocalStack tests
+  self-skip when no daemon is reachable, so `dotnet test` stays green locally
+  (27 pass, 9 skip). They run for real in CI and on the owner's Mac mini. A
+  failure *after* the container starts is a genuine bug and fails loudly by
+  design - it is not a missing daemon.
+- **AWS CLI** is a user-scope install at
+  `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2\aws.exe`, which may not be on a
+  stale inherited PATH. Credentials are configured for `ap-southeast-2`.
+- **Twelve Data API key** is at `~/.pit-marketdata-key`. All three endpoints
+  (`time_series`, `splits`, `dividends`) were verified working on the real free
+  tier on 2026-09-08, so the `MANUAL` corporate-action fallback is not needed.
+- `gh` **has** the `workflow` scope. (An earlier note here said otherwise.)
+
+## Vendor payload shapes, confirmed against the live API
+
+- **Prices** are exact decimal *strings* (`"328.31000"`); volume is a string too.
+- **Splits** use `date`, and `ratio` is a rounded JSON number - a 7-for-1 split
+  reports `0.14286`. Parse `from_factor`/`to_factor` (exact integers) instead and
+  derive the ratio, or the adjustment maths inherits the rounding error.
+- **Dividends** use `ex_date` and a numeric `amount`.
 
 ## Known soft spot
 
