@@ -23,11 +23,8 @@ public static class QueryCommand
         var from = new Option<DateOnly?>("--from") { Description = "Start of the date range." };
         var to = new Option<DateOnly?>("--to") { Description = "End of the date range." };
 
-        var asOf = new Option<DateTimeOffset>("--as-of")
-        {
-            Description = "What was knowable at this instant. Required.",
-            Required = true
-        };
+        var asOf = AsOfOption.Required(
+            "What was knowable at this instant. UTC unless an offset is given. Required.");
 
         var adjust = new Option<string>("--adjust")
         {

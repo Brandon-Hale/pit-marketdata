@@ -4,6 +4,8 @@ using MarketData.Domain;
 using MarketData.Hosting;
 using MarketData.Query;
 using MarketData.Sources;
+using MarketData.Sources.TwelveData;
+using MarketData.Storage;
 using MarketData.Storage.Dynamo;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -28,6 +30,15 @@ services.AddSingleton<KnownCloseLookup>(sp =>
 
 var provider = services.AddMarketData(options).BuildServiceProvider();
 
+// When the vendor plan does not cover splits for a symbol, the un-adjust uses the actions
+// already recorded -- entered by hand with source MANUAL. Sources cannot reference Query,
+// so this arrives as a delegate like the prior-knowledge lookup does.
+Func<string, CancellationToken, Task<IReadOnlyList<CorporateAction>>> knownActions =
+    async (symbol, ct) => await provider.GetRequiredService<IMarketDataQuery>()
+        .GetCorporateActionsAsync(
+            symbol, new DateOnly(1900, 1, 1), new DateOnly(2999, 12, 31),
+            provider.GetRequiredService<TimeProvider>().GetUtcNow(), ct);
+
 var time = provider.GetRequiredService<TimeProvider>();
 var watchlist = provider.GetRequiredService<IWatchlistRepository>();
 
@@ -45,10 +56,8 @@ removeCommand.SetAction((parseResult, ct) => WatchlistCommand.RemoveAsync(
 
 // Membership defaulting to now is a convenience; a price defaulting to now is lookahead
 // bias. Hence a default here and none on query.
-var listAsOf = new Option<DateTimeOffset?>("--as-of")
-{
-    Description = "Show membership as it was at this instant. Defaults to now."
-};
+var listAsOf = AsOfOption.Optional(
+    "Show membership as it was at this instant, UTC unless an offset is given. Defaults to now.");
 
 var listCommand = new Command("list", "Show tracked symbols.") { listAsOf };
 listCommand.SetAction((parseResult, ct) => WatchlistCommand.ListAsync(
@@ -79,8 +88,20 @@ var backfillCommand = new Command("backfill", "Fetch full history for a symbol."
 
 backfillCommand.SetAction(async (parseResult, ct) =>
 {
-    var ingestService = provider.GetRequiredService<IngestService>();
     var source = provider.GetRequiredService<IPriceSource>();
+
+    var ingestService = new IngestService(
+        source,
+        provider.GetRequiredService<IPriceNormaliser>(),
+        provider.GetRequiredService<TwelveDataActionsNormaliser>(),
+        provider.GetRequiredService<ObservationPolicy>(),
+        provider.GetRequiredService<IRawStore>(),
+        provider.GetRequiredService<ICuratedStore>(),
+        provider.GetRequiredService<ICursorRepository>(),
+        provider.GetRequiredService<KnownCloseLookup>() is { } k
+            ? (sym, date, ct) => k(sym, date, ct)
+            : null,
+        knownActions);
     var runId = $"cli-{time.GetUtcNow():yyyyMMddTHHmmssZ}";
 
     await BackfillCommand.RunAsync(
@@ -107,9 +128,15 @@ var queryCommand = QueryCommand.Build(async (symbol, from, to, asOf, adjustment,
     QueryCommand.Print(bars);
 });
 
+var actionCommand = ActionCommand.Build(
+    (action, ct) => provider.GetRequiredService<ICuratedStore>()
+        .AppendActionsAsync([action], action.IngestId, ct),
+    provider.GetRequiredService<IPublicationClock>(),
+    () => time.GetUtcNow());
+
 var root = new RootCommand("Point-in-time market data warehouse.")
 {
-    watchlistCommand, backfillCommand, queryCommand
+    watchlistCommand, backfillCommand, queryCommand, actionCommand
 };
 
 return await root.Parse(args).InvokeAsync();
