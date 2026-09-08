@@ -48,12 +48,17 @@ public sealed class CuratedSource
         // INSTALL reaches extensions.duckdb.org on first use and caches under ~/.duckdb.
         // Acceptable locally and in CI; a Lambda must ship the extension instead. See the
         // risks section of the Stage 4 design.
+        // SCOPE binds the secret to this prefix explicitly; without it DuckDB can fall
+        // back to no credentials and the read fails 403. REGION is stated rather than
+        // inferred because a custom endpoint has no region to infer from.
         command.CommandText = _endpoint is null
             ? "INSTALL httpfs; LOAD httpfs; " +
-              "CREATE OR REPLACE SECRET s3 (TYPE s3, PROVIDER credential_chain);"
+              $"CREATE OR REPLACE SECRET s3 (TYPE s3, PROVIDER credential_chain, " +
+              $"SCOPE '{_prefix}');"
             : "INSTALL httpfs; LOAD httpfs; " +
               $"CREATE OR REPLACE SECRET s3 (TYPE s3, KEY_ID 'test', SECRET 'test', " +
-              $"ENDPOINT '{_endpoint}', URL_STYLE 'path', USE_SSL false);";
+              $"REGION 'us-east-1', ENDPOINT '{_endpoint}', URL_STYLE 'path', " +
+              $"USE_SSL false, SCOPE '{_prefix}');";
 
         command.ExecuteNonQuery();
     }
