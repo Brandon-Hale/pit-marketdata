@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+    <PackageReference Include="AWSSDK.SimpleSystemsManagement" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\MarketData.Sources\MarketData.Sources.csproj" />
+    <ProjectReference Include="..\MarketData.Storage\MarketData.Storage.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -13,6 +13,13 @@
   <ItemGroup Label="Sources">
     <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.9.0" />
     <PackageVersion Include="Microsoft.Extensions.Hosting" Version="10.0.11" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11" />
+    <PackageVersion Include="System.CommandLine" Version="2.0.11" />
+  </ItemGroup>
+  <ItemGroup Label="Lambda">
+    <PackageVersion Include="Amazon.Lambda.Core" Version="3.3.0" />
+    <PackageVersion Include="Amazon.Lambda.RuntimeSupport" Version="2.2.0" />
+    <PackageVersion Include="Amazon.Lambda.Serialization.SystemTextJson" Version="3.0.1" />
   </ItemGroup>
   <ItemGroup Label="Query">
     <PackageVersion Include="DuckDB.NET.Data.Full" Version="1.5.5" />

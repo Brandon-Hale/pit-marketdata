@@ -135,6 +135,35 @@ public sealed class PriorKnowledgeTests : IDisposable
         }
     }
 
+    [Fact]
+    public async Task Queries_once_per_symbol_not_once_per_date()
+    {
+        // A backfill asks about thousands of dates. One S3-backed DuckDB query each made an
+        // eleven-year backfill run for over ten minutes without writing a single row.
+        var counting = new CountingQuery();
+        var lookup = PriorKnowledge.From(counting, new FakeTimeProvider(Now));
+
+        for (var day = 1; day <= 20; day++)
+        {
+            await lookup("AAPL", new DateOnly(2020, 6, day), TestContext.Current.CancellationToken);
+        }
+
+        counting.Calls.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task A_second_symbol_costs_one_more_query()
+    {
+        var counting = new CountingQuery();
+        var lookup = PriorKnowledge.From(counting, new FakeTimeProvider(Now));
+
+        await lookup("AAPL", new DateOnly(2020, 6, 15), TestContext.Current.CancellationToken);
+        await lookup("MSFT", new DateOnly(2020, 6, 15), TestContext.Current.CancellationToken);
+        await lookup("AAPL", new DateOnly(2020, 6, 16), TestContext.Current.CancellationToken);
+
+        counting.Calls.ShouldBe(2);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))
@@ -142,4 +171,27 @@ public sealed class PriorKnowledgeTests : IDisposable
             Directory.Delete(_root, recursive: true);
         }
     }
+}
+
+/// <summary>Counts queries, so the per-symbol caching is asserted rather than assumed.</summary>
+file sealed class CountingQuery : IMarketDataQuery
+{
+    public int Calls { get; private set; }
+
+    public Task<IReadOnlyList<DailyBar>> GetPricesAsync(
+        string symbol, DateOnly from, DateOnly to, DateTimeOffset asOf,
+        PriceAdjustment adjustment, ObservationMode observations, CancellationToken ct)
+    {
+        Calls++;
+
+        return Task.FromResult<IReadOnlyList<DailyBar>>([
+            new DailyBar(symbol, new DateOnly(2020, 6, 15), 340m, 345m, 339m, 342.99m, 1L,
+                "USD", "twelvedata", new DateTimeOffset(2020, 6, 15, 20, 15, 0, TimeSpan.Zero),
+                ObservationKind.Inferred, "run-1", "raw/x.json", "raw/s.json")
+        ]);
+    }
+
+    public Task<IReadOnlyList<CorporateAction>> GetCorporateActionsAsync(
+        string symbol, DateOnly from, DateOnly to, DateTimeOffset asOf, CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<CorporateAction>>([]);
 }

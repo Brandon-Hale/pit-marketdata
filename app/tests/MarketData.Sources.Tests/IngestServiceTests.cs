@@ -224,6 +224,35 @@ public sealed class IngestServiceTests : IDisposable
         curated.Prices.Single().Close.ShouldBe(342.99m);
     }
 
+    [Fact]
+    public async Task Saves_the_closes_it_wrote_onto_the_cursor()
+    {
+        var cursors = new InMemoryCursorRepository();
+        var handler = new RoutingStubHandler(new Dictionary<string, string>
+        {
+            ["time_series"] = AdjustedPricesBody,
+            ["splits"] = SplitsBody
+        });
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.twelvedata.com/") };
+
+        await new IngestService(
+            new TwelveDataPriceSource(client, "SECRET", new FakeTimeProvider(Now)),
+            new TwelveDataPriceNormaliser(),
+            new TwelveDataActionsNormaliser(),
+            new ObservationPolicy(new UsEquityPublicationClock(), TimeSpan.FromHours(24)),
+            new LocalRawStore(_root),
+            new CapturingCuratedStore(),
+            cursors).IngestSymbolAsync(
+                "AAPL", new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), "run-1",
+                TestContext.Current.CancellationToken);
+
+        var cursor = await cursors.GetAsync("prices_daily", "AAPL", TestContext.Current.CancellationToken);
+
+        // The unadjusted close, so a later comparison is like for like.
+        cursor!.RecentCloses.ShouldNotBeNull();
+        cursor.RecentCloses![new DateOnly(2020, 6, 15)].ShouldBe(342.99m);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

@@ -110,12 +110,28 @@ public sealed class IngestService(
             await curatedStore.AppendActionsAsync(actions, ingestId, ct);
         }
 
+        // Carry forward what was already known, then overlay this run's bars. The
+        // repository trims to the newest ten on save. Unadjusted closes, matching what a
+        // later comparison will be given.
+        var recentCloses = new Dictionary<DateOnly, decimal>();
+
+        foreach (var kv in cursor?.RecentCloses ?? new Dictionary<DateOnly, decimal>())
+        {
+            recentCloses[kv.Key] = kv.Value;
+        }
+
+        foreach (var written in bars)
+        {
+            recentCloses[written.EffectiveDate] = written.Close;
+        }
+
         await cursors.SaveAsync(
             new Cursor(
                 Dataset,
                 symbol,
                 parsed.Count > 0 ? parsed[^1].EffectiveDate : cursor?.LastEffectiveDate,
-                envelope.ContentHash),
+                envelope.ContentHash,
+                recentCloses),
             ct);
 
         return new IngestResult(
