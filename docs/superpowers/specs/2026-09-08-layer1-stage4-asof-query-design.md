@@ -291,3 +291,16 @@ result is flagged rather than silently wrong.
 **`httpfs` in tests.** DuckDB against LocalStack over `httpfs` requires path-style addressing
 and an endpoint override. If that proves unreliable, read-path equivalence is asserted against
 real S3 in a manual check instead, and the reason recorded — not dropped.
+
+**`INSTALL httpfs` downloads from the internet — a Stage 5 problem, recorded here.**
+`CuratedSource.Setup` issues `INSTALL httpfs; LOAD httpfs;`. `INSTALL` fetches the extension
+from `extensions.duckdb.org` and caches it under `~/.duckdb/`. That is a harmless one-off on a
+developer machine and in CI, but inside a Lambda it becomes a third-party network call on every
+cold start, against a read-only filesystem where only `/tmp` is writable.
+
+Stage 4 is unaffected — it runs locally and in CI. Stage 5 must resolve it, and the options are
+known: bundle the extension in the deployment package and point `extension_directory` at it,
+set `DUCKDB_EXTENSION_DIRECTORY` to a path under `/tmp` primed at build time, or statically
+link an httpfs-enabled DuckDB build. Whichever is chosen, the Lambda must not reach
+`extensions.duckdb.org` at runtime: an outage there would take ingestion down for a reason
+unrelated to either AWS or the vendor.

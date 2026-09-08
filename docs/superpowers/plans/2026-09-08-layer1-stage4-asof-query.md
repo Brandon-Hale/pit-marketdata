@@ -2244,3 +2244,6 @@ Named so an executor does not build them early:
 - Run records mirrored to S3, and GitHub OIDC for Terraform plans in CI.
 - Dividend-adjusted series materialised as their own dataset. Factors stay computed on demand.
 - Any second vendor, and the SEC EDGAR fundamentals join that `cik` exists for.
+- Making `httpfs` available without a network call. `INSTALL httpfs` downloads from
+  `extensions.duckdb.org`, which is fine locally and in CI but unacceptable on a Lambda cold
+  start. The spec's risks section records the options; Stage 5 must pick one.
