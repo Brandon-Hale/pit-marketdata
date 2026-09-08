@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="xunit.runner.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\MarketData.Query\MarketData.Query.csproj" />
+    <ProjectReference Include="..\..\src\MarketData.Storage\MarketData.Storage.csproj" />
+    <ProjectReference Include="..\..\src\MarketData.Sources\MarketData.Sources.csproj" />
+    <!--
+      Referencing another test project is deliberate: RoutingStubHandler,
+      InMemoryCursorRepository and CapturingCuratedStore are test doubles, and a second
+      copy of them would drift from the first.
+    -->
+    <ProjectReference Include="..\MarketData.Sources.Tests\MarketData.Sources.Tests.csproj" />
+  </ItemGroup>
+
+</Project>

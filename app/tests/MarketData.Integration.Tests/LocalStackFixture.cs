@@ -24,6 +24,13 @@ public sealed class LocalStackFixture : IAsyncLifetime
     public string TableName => "pit-marketdata-test";
 
     /// <summary>
+    /// Host:port of the LocalStack S3 endpoint, without a scheme. Used by the AWS SDK
+    /// clients above; DuckDB's httpfs ignores an endpoint override, so it cannot be
+    /// pointed here.
+    /// </summary>
+    public string Endpoint { get; private set; } = string.Empty;
+
+    /// <summary>
     /// False only when no Docker daemon could be reached, so tests skip instead of
     /// failing on machines without Docker. Everything after the container starts is
     /// deliberately outside the catch: a broken bucket or table setup is a real bug

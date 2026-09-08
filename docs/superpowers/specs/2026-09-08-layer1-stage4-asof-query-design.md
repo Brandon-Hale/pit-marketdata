@@ -288,6 +288,32 @@ the ex-date, which may be missing from the requested window or absent entirely. 
 be explicit: when the prior close is unavailable, the dividend contributes no factor and the
 result is flagged rather than silently wrong.
 
-**`httpfs` in tests.** DuckDB against LocalStack over `httpfs` requires path-style addressing
-and an endpoint override. If that proves unreliable, read-path equivalence is asserted against
-real S3 in a manual check instead, and the reason recorded — not dropped.
+**`httpfs` in tests — resolved 2026-09-08, and the fallback was needed.** DuckDB's httpfs
+**ignores the `ENDPOINT` override** on an S3 secret and contacts real AWS regardless, so a
+LocalStack run never reaches the container: it fails with AWS's own
+`InvalidAccessKeyId: "test"`. Path-style addressing and `USE_SSL false` make no difference,
+and neither does scoping the secret to the prefix.
+
+Read-path equivalence is therefore asserted against **real S3**, opt-in via
+`PITMD_S3_TEST_BUCKET`, and skipped by default including in CI. Verified manually against a
+throwaway bucket in `ap-southeast-2`: a bar written through `S3CuratedStore` read back
+through `DuckDbMarketDataQuery` with matching values.
+
+That check also answered a more important question. The CI failure showed DuckDB issuing an
+HTTP GET against the prefix rather than listing it, which would have meant the `**` glob does
+not expand over S3 — a production bug, not a test problem. It does expand correctly against
+real S3, so **the production read path is sound**; only the LocalStack substitute is not
+usable.
+
+**`INSTALL httpfs` downloads from the internet — a Stage 5 problem, recorded here.**
+`CuratedSource.Setup` issues `INSTALL httpfs; LOAD httpfs;`. `INSTALL` fetches the extension
+from `extensions.duckdb.org` and caches it under `~/.duckdb/`. That is a harmless one-off on a
+developer machine and in CI, but inside a Lambda it becomes a third-party network call on every
+cold start, against a read-only filesystem where only `/tmp` is writable.
+
+Stage 4 is unaffected — it runs locally and in CI. Stage 5 must resolve it, and the options are
+known: bundle the extension in the deployment package and point `extension_directory` at it,
+set `DUCKDB_EXTENSION_DIRECTORY` to a path under `/tmp` primed at build time, or statically
+link an httpfs-enabled DuckDB build. Whichever is chosen, the Lambda must not reach
+`extensions.duckdb.org` at runtime: an outage there would take ingestion down for a reason
+unrelated to either AWS or the vendor.

@@ -2244,3 +2244,11 @@ Named so an executor does not build them early:
 - Run records mirrored to S3, and GitHub OIDC for Terraform plans in CI.
 - Dividend-adjusted series materialised as their own dataset. Factors stay computed on demand.
 - Any second vendor, and the SEC EDGAR fundamentals join that `cik` exists for.
+- Any hosted API or UI over the query layer. Two rules for whenever that happens:
+  `asOf` is a **required** parameter and a request without it is a 400, never a default to
+  `now` — defaulting it rebuilds the lookahead bug at the HTTP layer where none of the
+  temporal tests can see it. And the web tier gets `s3:GetObject` on `curated/*` and nothing
+  else: no writes, no `raw/`, and no path to the vendor key in SSM.
+- Making `httpfs` available without a network call. `INSTALL httpfs` downloads from
+  `extensions.duckdb.org`, which is fine locally and in CI but unacceptable on a Lambda cold
+  start. The spec's risks section records the options; Stage 5 must pick one.
