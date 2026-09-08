@@ -62,7 +62,7 @@ Verified 2026-09-08 against the documented `demo` key:
 | Check | Result |
 |---|---|
 | `/time_series` | 2,936 daily bars, 2015-01-02 to 2026-09-04, **in a single request** |
-| Price basis | **Unadjusted** by default; values returned as exact decimal strings |
+| Price basis | **Split-adjusted, not unadjusted** — see the correction below. Values are exact decimal strings |
 | `/splits` | AAPL 4-for-1 (2020-08-31, `ratio: 0.25`) back to 1987 |
 | `/dividends` | 83 entries back to 1988 |
 | Limits | 800 credits/day, **8 credits/minute** |
@@ -76,6 +76,37 @@ no queue, no reserved-concurrency throttle beyond `1`.
 **Fetch strategy.** `/time_series` returns *full* history on every call, so a naive content
 hash would differ every day (a new bar is appended) and re-ingest all 2,936 rows. Daily runs
 therefore request `start_date = cursor` only; full history is for backfill.
+
+> ### Correction, 2026-09-08: `/time_series` returns SPLIT-ADJUSTED prices
+>
+> The "unadjusted by default" claim above was **wrong**, and it was the assumption the
+> storage model rested on. Measured against the historical record:
+>
+> | Date | True close that day | Vendor returned | Ratio |
+> |---|---|---|---|
+> | 2020-06-15 | $342.99 | 85.74750 | ÷ 4 |
+> | 2020-08-28 | $499.23 | 124.80750 | ÷ 4 |
+> | 2014-06-06 | $645.57 | 23.056070 | ÷ 28 |
+>
+> Each matches a clean division by the **cumulative split factor from that date to today**
+> (÷4 for the 2020 4-for-1; ÷28 for the 2014 7-for-1 compounded with it), to five decimal
+> places. There is no `adjust` parameter to turn this off.
+>
+> The adjustment is **split-only**. A dividend adjustment would push these values below a
+> clean division by the split factor, and it does not.
+>
+> **Why this matters.** A price the vendor reports for 2020-06-15 is re-based every time a
+> new split occurs. The same fetch performed after a future 2-for-1 would return 42.87 for
+> that same day. So the "raw" payload is a snapshot of a moving target, and computing
+> adjustment factors at query time on top of it would **double-adjust**.
+>
+> **Why it is recoverable.** Splits and their ex-dates come from `/splits`, and every raw
+> envelope carries the `observed_at` at which its prices were adjusted. True unadjusted
+> price = reported price × (cumulative split factor for splits with ex-date after the
+> effective date, as known at `observed_at`). Nothing is lost; the un-adjust step has to be
+> added, and it needs the splits payload as an input.
+>
+> This affects Stage 4, and the resolution is an open design decision recorded there.
 
 **Resolved 2026-09-08.** The three calls were re-run with a real free-tier key via
 `scripts/verify-vendor.sh`: `/time_series`, `/splits` and `/dividends` all returned data.

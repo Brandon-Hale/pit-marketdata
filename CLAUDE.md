@@ -68,8 +68,12 @@ nothing throws, the numbers just become wrong.
 - **Parsing is a pure function of the raw envelope** — no clock, no I/O, no prior state. The
   timestamp decision lives separately in `ObservationPolicy`.
 - **Append-only.** No code path updates or deletes a curated row. A restatement is a new row.
-- **Prices are stored raw and unadjusted**, parsed to `decimal` from the vendor's exact
-  decimal strings. Never `double`. Never store vendor-adjusted prices.
+- **Prices are stored unadjusted**, parsed to `decimal` from the vendor's exact decimal
+  strings. Never `double`. Never store vendor-adjusted prices.
+  **Open issue:** verified 2026-09-08 that Twelve Data's `/time_series` returns
+  **split-adjusted** prices with no way to disable it, so this rule is currently violated at
+  the source. Stage 4 must un-adjust on ingest using the splits dataset and each envelope's
+  `observed_at`. See the correction in the spec's §3.
 - **A restatement never gets an inferred timestamp** — it takes the real fetch time. Inferring
   one would claim a corrected value was knowable at the original date.
 - **No `DateTime.UtcNow` / `DateTimeOffset.UtcNow`** outside a composition root. All time comes
