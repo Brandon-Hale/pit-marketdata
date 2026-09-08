@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <PackageReference Include="Parquet.Net" />
+    <PackageReference Include="AWSSDK.S3" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" />
   </ItemGroup>
 
   <ItemGroup>
