@@ -161,6 +161,69 @@ public sealed class IngestServiceTests : IDisposable
         action.ObservedAt.ShouldBe(new DateTimeOffset(2020, 8, 31, 20, 15, 0, TimeSpan.Zero));
     }
 
+    private const string DividendsBody =
+        """{"meta":{"symbol":"AAPL","currency":"USD"},"dividends":[{"ex_date":"2020-08-07","amount":0.205}]}""";
+
+    [Fact]
+    public async Task Dividends_are_ingested_alongside_splits()
+    {
+        var curated = new CapturingCuratedStore();
+        var handler = new RoutingStubHandler(new Dictionary<string, string>
+        {
+            ["time_series"] = AdjustedPricesBody,
+            ["splits"] = SplitsBody,
+            ["dividends"] = DividendsBody
+        });
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.twelvedata.com/") };
+
+        var result = await new IngestService(
+            new TwelveDataPriceSource(client, "SECRET", new FakeTimeProvider(Now)),
+            new TwelveDataPriceNormaliser(),
+            new TwelveDataActionsNormaliser(),
+            new ObservationPolicy(new UsEquityPublicationClock(), TimeSpan.FromHours(24)),
+            new LocalRawStore(_root),
+            curated,
+            new InMemoryCursorRepository()).IngestSymbolAsync(
+                "AAPL", new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), "run-1",
+                TestContext.Current.CancellationToken);
+
+        result.ActionsWritten.ShouldBe(2);
+
+        var dividend = curated.Actions.Single(a => a.ActionType == CorporateActionType.Dividend);
+        dividend.ExDate.ShouldBe(new DateOnly(2020, 8, 7));
+        dividend.Amount.ShouldBe(0.205m);
+        // Its raw key points at the dividends payload, not the splits one.
+        dividend.RawKey.ShouldBe("raw/source=twelvedata/dataset=dividends/dt=2026-09-08/AAPL.json");
+    }
+
+    [Fact]
+    public async Task A_dividend_does_not_un_adjust_the_price()
+    {
+        // The vendor adjusts for splits only, so a dividend must not alter the un-adjust.
+        var curated = new CapturingCuratedStore();
+        var handler = new RoutingStubHandler(new Dictionary<string, string>
+        {
+            ["time_series"] = AdjustedPricesBody,
+            ["splits"] = SplitsBody,
+            ["dividends"] = DividendsBody
+        });
+        var client = new HttpClient(handler) { BaseAddress = new Uri("https://api.twelvedata.com/") };
+
+        await new IngestService(
+            new TwelveDataPriceSource(client, "SECRET", new FakeTimeProvider(Now)),
+            new TwelveDataPriceNormaliser(),
+            new TwelveDataActionsNormaliser(),
+            new ObservationPolicy(new UsEquityPublicationClock(), TimeSpan.FromHours(24)),
+            new LocalRawStore(_root),
+            curated,
+            new InMemoryCursorRepository()).IngestSymbolAsync(
+                "AAPL", new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), "run-1",
+                TestContext.Current.CancellationToken);
+
+        // Still exactly 342.99: only the 0.25 split factor applied.
+        curated.Prices.Single().Close.ShouldBe(342.99m);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_root))

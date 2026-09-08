@@ -150,7 +150,9 @@ The plan was written before these were known. Do not "fix" the code back.
 - **Splits** use `date`, and `ratio` is a rounded JSON number - a 7-for-1 split
   reports `0.14286`. Parse `from_factor`/`to_factor` (exact integers) instead and
   derive the ratio, or the adjustment maths inherits the rounding error.
-- **Dividends** use `ex_date` and a numeric `amount`.
+- **Dividends** use `ex_date` and a numeric `amount`. They are ingested alongside splits
+  but play no part in un-adjusting: the vendor adjusts for splits only, so folding
+  dividends into the un-adjust would corrupt every stored price.
 
 ---
 
