@@ -5,37 +5,52 @@ correctly: **what was knowable about instrument X on date D?**
 
 ## Current state
 
-Stages 0-2 are **complete and verified**; Stage 3 is in progress. Work is on the
-branch `layer1-foundations` (PR #1), 12 commits, CI green.
+**All 19 tasks of the Layer 1 foundations plan are implemented.** Stages 0-3 are
+complete. Work is on branch `layer1-foundations` (PR #1), CI green.
 
-| Task | | Status |
+**59 tests, 59 passing in CI** (which has Docker, so the LocalStack tests run for
+real). Locally without Docker: 50 pass, 9 skip.
+
+| Stage | | Status |
 |---|---|---|
-| 1-2 | Solution, pinned packages, CI | Done |
-| 3-6 | Terraform, **applied to AWS** | Done |
-| 7-12 | Domain facts, clock, raw store, Parquet, DuckDB | Done |
-| 13-14 | S3 + DynamoDB stores, LocalStack tests | Done |
-| 15 | Vendor key verified; **SSM parameter not yet written** | Partial |
-| 16-19 | Price source, parsing, actions, ingest orchestration | **Not started** |
+| 0 | Repo, build baseline, CI | Done |
+| 1 | Terraform, **applied to AWS** | Done |
+| 2 | Domain facts, clock, stores, Parquet, DuckDB | Done |
+| 3 | Vendor integration, parsing, ingest orchestration | Done |
+| 4-6 | Query layer, adjustments, Lambda, CLI | **Next plan** |
 
-36 tests, all passing in CI (which has Docker, so the LocalStack tests run for
-real there). Resume at **Task 15 Step 4** (put the key in SSM), then Task 16.
+There is deliberately **no runnable application yet**. Everything under `app/src`
+is a class library. The as-of query layer, the eight temporal tests, the Lambda
+and the CLI are Stages 4-6. Do not build them early.
 
 ### Live AWS resources (region ap-southeast-2 = Sydney)
 
 - `pit-marketdata-tfstate-bzun6w` - Terraform state, versioned
 - `pit-marketdata-data-bzun6w` - holds `raw/` and `curated/`
-- `pit-marketdata-marketdata` - DynamoDB, PAY_PER_REQUEST
+- `pit-marketdata-marketdata` - DynamoDB, PAY_PER_REQUEST, PITR on
 - Two billing alarms in **us-east-1** at USD 5 and 20, SNS subscription confirmed
+- `/pit-marketdata/twelvedata/apikey` in SSM as a `SecureString`
 
 Billing alarms must live in us-east-1: AWS publishes `EstimatedCharges` only
 there, and only in USD. There is no AUD series, so an AUD alarm would silently
-never fire.
+never fire. Running cost today is effectively $0/month - every line sits inside a
+permanent free allowance.
+
+## Disk space warning
+
+The dev machine runs with **under 1 GB free on C:**. `DuckDB.NET.Data.Full` copies
+~315 MB of native binaries for five platforms into the output of every project
+that references it, which has filled the disk mid-build. Only
+`MarketData.Storage.Tests` references it, deliberately - do not add it to a second
+project. Run `dotnet build-server shutdown` then delete `app/**/bin` and
+`app/**/obj` to reclaim ~600 MB. The NuGet cache is a further 3.5 GB
+(`dotnet nuget locals all --clear`).
 
 ## Start here
 
 1. Read [`docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md`](docs/superpowers/specs/2026-09-08-layer1-point-in-time-market-data-design.md) - what and why.
 2. Read [`docs/superpowers/plans/2026-09-08-layer1-foundations.md`](docs/superpowers/plans/2026-09-08-layer1-foundations.md) - 19 tasks, Stages 0-3.
-3. Resume from Task 15, Step 4.
+3. The next plan covers Stages 4-6 and has not been written yet.
 
 There is deliberately **no runnable application yet**. Everything under `app/src`
 is a class library. The Lambda, the CLI and the as-of query layer are Stages 4-6
