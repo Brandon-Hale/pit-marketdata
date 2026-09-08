@@ -93,6 +93,14 @@ nothing throws, the numbers just become wrong.
 - **Reserved concurrency is unset** because this account's total Lambda concurrency quota is
   10 and AWS refuses a reservation leaving fewer than 10 unreserved. Set
   `reserved_concurrency = 1` once the quota is raised.
+- **Corporate actions are paywalled for every symbol except AAPL.** `/splits` and
+  `/dividends` return 403 on the free tier for MSFT, NVDA, SPY and everything else. Since
+  prices are split-adjusted, ingesting without a split history would store adjusted values
+  as raw ones. A 403 is `VendorNotEntitledException`; `IngestService` falls back to recorded
+  actions when a lookup is supplied and fails loudly when one is not. Enter them with
+  `marketdata action add`, which writes `source = MANUAL`.
+- **`--as-of` is parsed as UTC** when no offset is given. Local parsing shifted a bare date
+  by ten hours in Sydney and silently returned no rows.
 - **`asOf` is never optional.** `IMarketDataQuery` has no overload without it, and any
   future API must reject a request that omits it rather than defaulting to now.
 - **A restatement never gets an inferred timestamp** — it takes the real fetch time. Inferring

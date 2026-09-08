@@ -30,4 +30,22 @@ check "splits" "$base/splits?symbol=$symbol&range=full" '"splits"'
 
 check "dividends" "$base/dividends?symbol=$symbol&range=full" '"dividends"'
 
+# AAPL is not representative: the free tier serves corporate actions for it and answers 403
+# for everything else. Checking a second symbol is what makes this a real gate rather than a
+# check of the one case that happens to pass. These two are EXPECTED TO FAIL on the free
+# tier -- that is the finding, not a regression -- so they report separately and do not set
+# the exit code. Corporate actions for anything but AAPL come from `marketdata action add`.
+echo
+echo "Corporate actions for a second symbol (free tier is expected to 403):"
+
+for endpoint in splits dividends; do
+  body=$(curl -s -m 30 "$base/$endpoint?symbol=MSFT&range=full&apikey=${TWELVEDATA_API_KEY}")
+
+  if echo "$body" | grep -q "\"$endpoint\""; then
+    echo "  AVAILABLE  MSFT/$endpoint - the plan covers all symbols, manual entry is unnecessary"
+  else
+    echo "  PAYWALLED  MSFT/$endpoint - expected on the free tier; use 'marketdata action add'"
+  fi
+done
+
 exit "$fail"
