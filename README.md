@@ -61,7 +61,8 @@ Two supporting rules do most of the remaining work:
 
 ## Status
 
-**Stages 0–4 are complete.** 103 tests, green in CI. Infrastructure is applied and live.
+**Stages 0–5 are complete.** 151 tests, green in CI. Infrastructure is applied, the
+scheduled function is deployed, and there is real data in the warehouse.
 
 | Stage | Deliverable | Status |
 |---|---|---|
@@ -70,12 +71,9 @@ Two supporting rules do most of the remaining work:
 | 2 | Data layer — domain, Parquet schemas, stores, repositories | ✅ Done |
 | 3 | Integration — Twelve Data source, raw envelope, normalisers, ingest | ✅ Done |
 | 4 | Query layer — as-of reads, adjustment, **8 temporal tests** | ✅ Done |
-| 5 | Application — Lambda, schedule, CLI | ⬚ Next |
-| 6 | Hardening — reprocess, compaction, rebuild-from-raw proof | ⬚ Not started |
+| 5 | Application — Lambda, schedule, CLI | ✅ Done, deployed |
+| 6 | Hardening — reprocess, compaction, rebuild-from-raw proof | ⬚ Next |
 | 7 | SEC EDGAR fundamentals | ⬚ Not started |
-
-**There is deliberately no runnable application yet.** Everything in `app/src` is a class
-library. The CLI and the scheduled Lambda are Stage 5.
 
 Stage 4's test suite *is* the specification — the eight temporal tests in
 `app/tests/MarketData.Query.Tests/TemporalTests.cs` are what makes the guarantee real rather
@@ -83,6 +81,36 @@ than aspirational. The temporal rules themselves were fixed earlier, in Stage 2,
 are not a feature of the read path — they are the schema.
 
 ---
+
+## Using it
+
+Two entry points over the same libraries: a CLI you drive, and a Lambda that runs itself on
+weekdays at 22:15 UTC, after the US close.
+
+```bash
+export MARKETDATA_DATA_BUCKET=pit-marketdata-data-...
+export MARKETDATA_TABLE_NAME=pit-marketdata-marketdata
+
+marketdata watchlist add AAPL
+marketdata backfill AAPL --from 2015-01-01        # 2,936 rows in ~14s
+marketdata query AAPL --on 2020-06-15 --as-of 2020-07-01
+marketdata query AAPL --on 2020-06-15 --as-of 2026-09-08
+```
+
+Real output from those last two commands:
+
+```
+2020-06-15  O   333.25  H   345.68  L   332.58  C   342.99  V  34,702,200  [INFERRED]
+2020-06-15  O  83.3125  H    86.42  L   83.145  C  85.7475  V 138,808,800  [INFERRED]
+```
+
+Same stored row. The first is what Apple actually traded at that day; the second is the same
+day re-based for the 4-for-1 split that happened eleven weeks later. Volume moves inversely.
+Nothing in the query says anything about splits — the `asOf` filter runs over prices and
+corporate actions alike, and the arithmetic falls out.
+
+`--as-of` is **required** on `query`. There is no overload without it, in the CLI or the
+library: a convenience default of "now" is exactly how lookahead bias would return.
 
 ## How it works
 
@@ -103,28 +131,6 @@ flowchart TD
     style R fill:#2d3748,color:#fff
     style C fill:#2d3748,color:#fff
 ```
-
-### The two answers, as real code
-
-```csharp
-var query = new DuckDbMarketDataQuery(CuratedSource.S3("pit-marketdata-data-bzun6w"));
-var day = new DateOnly(2020, 6, 15);
-
-// What was knowable on 2020-07-01: the split had not happened yet.
-await query.GetPricesAsync("AAPL", day, day,
-    asOf: new DateTimeOffset(2020, 7, 1, 0, 0, 0, TimeSpan.Zero),
-    PriceAdjustment.SplitsOnly, ObservationMode.All, ct);
-// -> close 342.99
-
-// What is knowable now: the 4-for-1 is applied.
-await query.GetPricesAsync("AAPL", day, day,
-    asOf: DateTimeOffset.UtcNow,
-    PriceAdjustment.SplitsOnly, ObservationMode.All, ct);
-// -> close 85.7475
-```
-
-Note there is no overload without `asOf`. That is deliberate: a convenience method
-defaulting it to "now" would reintroduce lookahead bias at every call site.
 
 ### Why fetching and parsing are separate
 
