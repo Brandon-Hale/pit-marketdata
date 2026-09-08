@@ -1,0 +1,66 @@
+# ---------- .NET ----------
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+artifacts/
+*.user
+*.suo
+*.userprefs
+.vs/
+.idea/
+*.received.*
+TestResults/
+coverage*.json
+coverage*.xml
+*.coverage
+BenchmarkDotNet.Artifacts/
+
+# ---------- Lambda build output ----------
+dist/
+*.zip
+
+# ---------- Terraform ----------
+# State must never be committed: it contains resource metadata and can contain secrets.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl.bak
+crash.log
+crash.*.log
+# Real variable values stay local; terraform.tfvars.example is committed.
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+tfplan
+*.tfplan
+
+# ---------- Secrets / local config ----------
+.env
+.env.*
+!.env.example
+appsettings.Local.json
+appsettings.Development.json
+secrets.json
+*.pem
+*.key
+
+# ---------- Local data ----------
+# Local Parquet/raw stores used before S3 exists (Stages 1-2).
+/data/
+/local-store/
+*.duckdb
+*.duckdb.wal
+
+# ---------- OS / editor ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp

@@ -1,0 +1,17 @@
+* text=auto eol=lf
+
+*.sln       text eol=crlf
+*.csproj    text eol=crlf
+*.props     text eol=crlf
+*.ps1       text eol=crlf
+*.cmd       text eol=crlf
+*.bat       text eol=crlf
+
+*.sh        text eol=lf
+*.tf        text eol=lf
+*.tfvars    text eol=lf
+
+*.png binary
+*.jpg binary
+*.zip binary
+*.parquet binary
