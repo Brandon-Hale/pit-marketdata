@@ -2,7 +2,7 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>bootstrap</AssemblyName>
+    <AssemblyName>MarketData.Lambda</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
