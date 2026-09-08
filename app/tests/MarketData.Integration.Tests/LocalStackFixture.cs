@@ -1,3 +1,5 @@
+using Amazon.DynamoDBv2;
+using Amazon.DynamoDBv2.Model;
 using Amazon.S3;
 using Testcontainers.LocalStack;
 
@@ -10,7 +12,11 @@ public sealed class LocalStackFixture : IAsyncLifetime
 
     public IAmazonS3 S3 { get; private set; } = null!;
 
+    public IAmazonDynamoDB Dynamo { get; private set; } = null!;
+
     public string Bucket => "pit-marketdata-test";
+
+    public string TableName => "pit-marketdata-test";
 
     /// <summary>
     /// False when no Docker daemon could be reached. Tests skip rather than fail, so the
@@ -41,6 +47,32 @@ public sealed class LocalStackFixture : IAsyncLifetime
                 });
 
             await S3.PutBucketAsync(Bucket);
+
+            Dynamo = new AmazonDynamoDBClient(
+                "test",
+                "test",
+                new AmazonDynamoDBConfig
+                {
+                    ServiceURL = _container.GetConnectionString(),
+                    AuthenticationRegion = "ap-southeast-2"
+                });
+
+            await Dynamo.CreateTableAsync(new CreateTableRequest
+            {
+                TableName = TableName,
+                BillingMode = BillingMode.PAY_PER_REQUEST,
+                KeySchema =
+                [
+                    new KeySchemaElement("pk", KeyType.HASH),
+                    new KeySchemaElement("sk", KeyType.RANGE)
+                ],
+                AttributeDefinitions =
+                [
+                    new AttributeDefinition("pk", ScalarAttributeType.S),
+                    new AttributeDefinition("sk", ScalarAttributeType.S)
+                ]
+            });
+
             Available = true;
         }
         catch (Exception ex)
@@ -52,6 +84,7 @@ public sealed class LocalStackFixture : IAsyncLifetime
     public async ValueTask DisposeAsync()
     {
         S3?.Dispose();
+        Dynamo?.Dispose();
 
         if (_container is not null)
         {

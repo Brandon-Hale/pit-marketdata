@@ -9,14 +9,21 @@ terraform {
   }
 }
 
+# Every resource this project creates carries these, so the whole footprint can be
+# found — and costed — with a single tag filter. Applied via the providers'
+# default_tags rather than per resource, so nothing can be added untagged.
+locals {
+  common_tags = {
+    Project   = var.project
+    ManagedBy = "terraform"
+  }
+}
+
 provider "aws" {
   region = var.region
 
   default_tags {
-    tags = {
-      Project   = var.project
-      ManagedBy = "terraform"
-    }
+    tags = local.common_tags
   }
 }
 
@@ -25,10 +32,7 @@ provider "aws" {
   region = "us-east-1"
 
   default_tags {
-    tags = {
-      Project   = var.project
-      ManagedBy = "terraform"
-    }
+    tags = local.common_tags
   }
 }
 
