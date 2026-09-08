@@ -5,9 +5,14 @@ using Testcontainers.LocalStack;
 
 namespace MarketData.Integration.Tests;
 
-/// <summary>Starts LocalStack once per test collection and exposes a configured S3 client.</summary>
+/// <summary>Starts LocalStack once per test collection and exposes configured AWS clients.</summary>
 public sealed class LocalStackFixture : IAsyncLifetime
 {
+    // LocalStack ignores regions, and us-east-1 is the one region S3 accepts a
+    // CreateBucket for without an explicit LocationConstraint. Using the real
+    // project region here buys nothing and fails the create.
+    private const string TestRegion = "us-east-1";
+
     private LocalStackContainer? _container;
 
     public IAmazonS3 S3 { get; private set; } = null!;
@@ -19,11 +24,10 @@ public sealed class LocalStackFixture : IAsyncLifetime
     public string TableName => "pit-marketdata-test";
 
     /// <summary>
-    /// False when no Docker daemon could be reached. Tests skip rather than fail, so the
-    /// suite stays green on machines without Docker while still running for real wherever
-    /// a daemon exists. The container is built inside the guard because
-    /// <c>LocalStackBuilder.Build()</c> probes Docker eagerly and throws from the
-    /// constructor otherwise.
+    /// False only when no Docker daemon could be reached, so tests skip instead of
+    /// failing on machines without Docker. Everything after the container starts is
+    /// deliberately outside the catch: a broken bucket or table setup is a real bug
+    /// and must fail loudly rather than masquerade as a missing daemon.
     /// </summary>
     public bool Available { get; private set; }
 
@@ -33,52 +37,54 @@ public sealed class LocalStackFixture : IAsyncLifetime
     {
         try
         {
+            // Build() probes Docker eagerly and throws, so it lives inside the guard.
             _container = new LocalStackBuilder("localstack/localstack:3").Build();
             await _container.StartAsync();
-
-            S3 = new AmazonS3Client(
-                "test",
-                "test",
-                new AmazonS3Config
-                {
-                    ServiceURL = _container.GetConnectionString(),
-                    ForcePathStyle = true,
-                    AuthenticationRegion = "ap-southeast-2"
-                });
-
-            await S3.PutBucketAsync(Bucket);
-
-            Dynamo = new AmazonDynamoDBClient(
-                "test",
-                "test",
-                new AmazonDynamoDBConfig
-                {
-                    ServiceURL = _container.GetConnectionString(),
-                    AuthenticationRegion = "ap-southeast-2"
-                });
-
-            await Dynamo.CreateTableAsync(new CreateTableRequest
-            {
-                TableName = TableName,
-                BillingMode = BillingMode.PAY_PER_REQUEST,
-                KeySchema =
-                [
-                    new KeySchemaElement("pk", KeyType.HASH),
-                    new KeySchemaElement("sk", KeyType.RANGE)
-                ],
-                AttributeDefinitions =
-                [
-                    new AttributeDefinition("pk", ScalarAttributeType.S),
-                    new AttributeDefinition("sk", ScalarAttributeType.S)
-                ]
-            });
-
-            Available = true;
         }
         catch (Exception ex)
         {
-            SkipReason = $"LocalStack unavailable, Docker is probably not running: {ex.Message}";
+            SkipReason = $"Docker is unavailable, so LocalStack could not start: {ex.Message}";
+            return;
         }
+
+        S3 = new AmazonS3Client(
+            "test",
+            "test",
+            new AmazonS3Config
+            {
+                ServiceURL = _container.GetConnectionString(),
+                ForcePathStyle = true,
+                AuthenticationRegion = TestRegion
+            });
+
+        await S3.PutBucketAsync(Bucket);
+
+        Dynamo = new AmazonDynamoDBClient(
+            "test",
+            "test",
+            new AmazonDynamoDBConfig
+            {
+                ServiceURL = _container.GetConnectionString(),
+                AuthenticationRegion = TestRegion
+            });
+
+        await Dynamo.CreateTableAsync(new CreateTableRequest
+        {
+            TableName = TableName,
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            KeySchema =
+            [
+                new KeySchemaElement("pk", KeyType.HASH),
+                new KeySchemaElement("sk", KeyType.RANGE)
+            ],
+            AttributeDefinitions =
+            [
+                new AttributeDefinition("pk", ScalarAttributeType.S),
+                new AttributeDefinition("sk", ScalarAttributeType.S)
+            ]
+        });
+
+        Available = true;
     }
 
     public async ValueTask DisposeAsync()
