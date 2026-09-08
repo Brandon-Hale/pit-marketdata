@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/MarketData.Domain/MarketData.Domain.csproj" />
+    <Project Path="src/MarketData.Storage/MarketData.Storage.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/MarketData.Domain.Tests/MarketData.Domain.Tests.csproj" />
+    <Project Path="tests/MarketData.Storage.Tests/MarketData.Storage.Tests.csproj" />
   </Folder>
 </Solution>
