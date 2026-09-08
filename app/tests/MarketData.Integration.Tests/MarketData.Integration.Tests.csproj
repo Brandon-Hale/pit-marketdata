@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\MarketData.Storage\MarketData.Storage.csproj" />
+    <ProjectReference Include="..\..\src\MarketData.Query\MarketData.Query.csproj" />
   </ItemGroup>
 
 </Project>
