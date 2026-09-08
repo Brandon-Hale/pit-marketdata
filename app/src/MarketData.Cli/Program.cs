@@ -56,10 +56,8 @@ removeCommand.SetAction((parseResult, ct) => WatchlistCommand.RemoveAsync(
 
 // Membership defaulting to now is a convenience; a price defaulting to now is lookahead
 // bias. Hence a default here and none on query.
-var listAsOf = new Option<DateTimeOffset?>("--as-of")
-{
-    Description = "Show membership as it was at this instant. Defaults to now."
-};
+var listAsOf = AsOfOption.Optional(
+    "Show membership as it was at this instant, UTC unless an offset is given. Defaults to now.");
 
 var listCommand = new Command("list", "Show tracked symbols.") { listAsOf };
 listCommand.SetAction((parseResult, ct) => WatchlistCommand.ListAsync(
