@@ -98,9 +98,12 @@ actions, the split is simply invisible before its ex-date, and the arithmetic fa
 
 ### Corporate actions the vendor will not sell you
 
-Twelve Data's free tier serves splits and dividends for **AAPL only** and answers 403 for
-everything else. Its prices are split-adjusted, so any other symbol needs its split history
-from somewhere or the stored prices would be adjusted values labelled as unadjusted.
+Twelve Data's free tier answers 403 on `/splits` and `/dividends` for **most** symbols —
+though not all, and the pattern is per symbol rather than a tidy allowlist. As at
+2026-09-08, AAPL and QQQ are served; AMD, PLTR, MSFT, NVDA and SPY are not. Check the
+symbol rather than inferring from another. Its prices are split-adjusted, so any symbol the
+vendor will not cover needs its split history from somewhere, or the stored prices would be
+adjusted values labelled as unadjusted.
 
 Enter them by hand. Splits are public and announced weeks ahead, so this costs minutes a year:
 
@@ -276,7 +279,7 @@ reading Parquet from S3 in place. There is nothing to host and nothing to pay fo
 
 ## Status
 
-**Stages 0–5 are complete and deployed.** 151 tests, green in CI. There is real data in the
+**Stages 0–5 are complete and deployed.** 166 tests, green in CI. There is real data in the
 warehouse.
 
 | Stage | Deliverable | Status |

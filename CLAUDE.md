@@ -5,7 +5,8 @@ correctly: **what was knowable about instrument X on date D?**
 
 ## Current state
 
-**Stages 0-5 are complete and deployed.** 151 tests green.
+**Stages 0-5 are complete and deployed.** 166 tests: 152 pass, 14 skip (the LocalStack
+ones, where Docker is absent). Verified 2026-09-08.
 
 | Stage | | Status |
 |---|---|---|
@@ -14,7 +15,13 @@ correctly: **what was knowable about instrument X on date D?**
 | 5 | Lambda, EventBridge schedule, IAM, CLI | Done, deployed |
 | 6 | Reprocess, compaction, rebuild-from-raw proof | **Next**, no spec yet |
 
-There is **real data in the warehouse**: AAPL from 2015, 2,936 rows, ~1MB across 40 objects.
+There is **real data in the warehouse**, but only for AAPL: 2,936 rows from 2015 to
+2026-09-04, ~1MB across 80 objects (51 `prices_daily` parts, 29 `corporate_actions`).
+
+The **watchlist holds 8 symbols** as at 2026-09-08 — AAPL, AMD, AMZN, GOOGL, NBIS, NVDA,
+PLTR, QQQ — so seven of them are tracked with no bars yet. Of those, only QQQ can complete a
+scheduled ingest: the rest are 403 on `/splits` and hit the gap described under corporate
+actions below.
 
 ### Live AWS resources (ap-southeast-2 = Sydney)
 
@@ -93,12 +100,21 @@ nothing throws, the numbers just become wrong.
 - **Reserved concurrency is unset** because this account's total Lambda concurrency quota is
   10 and AWS refuses a reservation leaving fewer than 10 unreserved. Set
   `reserved_concurrency = 1` once the quota is raised.
-- **Corporate actions are paywalled for every symbol except AAPL.** `/splits` and
-  `/dividends` return 403 on the free tier for MSFT, NVDA, SPY and everything else. Since
-  prices are split-adjusted, ingesting without a split history would store adjusted values
-  as raw ones. A 403 is `VendorNotEntitledException`; `IngestService` falls back to recorded
-  actions when a lookup is supplied and fails loudly when one is not. Enter them with
-  `marketdata action add`, which writes `source = MANUAL`.
+- **Corporate actions are paywalled per symbol, not by a simple AAPL allowlist.** `/splits`
+  and `/dividends` return 403 on the free tier for most symbols but not all. Verified
+  2026-09-08: **AAPL and QQQ are served; AMD, PLTR, MSFT, NVDA and SPY return 403.** Do not
+  assume a symbol works because another does — check it. Since prices are split-adjusted,
+  ingesting without a split history would store adjusted values as raw ones. A 403 is
+  `VendorNotEntitledException`; `IngestService` falls back to recorded actions when a lookup
+  is supplied and fails loudly when one is not. Enter them with `marketdata action add`,
+  which writes `source = MANUAL`.
+- **The scheduled Lambda cannot use hand-entered actions.** `AddMarketData` builds
+  `IngestService` without a `knownActionsLookup`, and the Lambda cannot supply the CLI's
+  because that reads through DuckDB, which the Lambda must never reference. So a 403 symbol
+  fails every nightly run even after its splits are recorded by hand. `IngestRunner` catches
+  it per symbol, so the run survives and the others still ingest — but those symbols only
+  advance via `marketdata backfill` from the CLI. Closing this needs the actions read to come
+  from somewhere the Lambda can reach.
 - **`--as-of` is parsed as UTC** when no offset is given. Local parsing shifted a bare date
   by ten hours in Sydney and silently returned no rows.
 - **`asOf` is never optional.** `IMarketDataQuery` has no overload without it, and any
@@ -159,16 +175,28 @@ The plan was written before these were known. Do not "fix" the code back.
 
 - **Docker is not available on the Windows dev machine.** The LocalStack tests
   self-skip when no daemon is reachable, so `dotnet test` stays green locally
-  (27 pass, 9 skip). They run for real in CI and on the owner's Mac mini. A
+  (152 pass, 14 skip). They run for real in CI and on the owner's Mac mini. A
   failure *after* the container starts is a genuine bug and fails loudly by
   design - it is not a missing daemon.
 - **AWS CLI** is a user-scope install at
   `%LOCALAPPDATA%\Programs\Amazon\AWSCLIV2\aws.exe`, which may not be on a
   stale inherited PATH. Credentials are configured for `ap-southeast-2`.
 - **Twelve Data API key** is at `~/.pit-marketdata-key`. All three endpoints
-  (`time_series`, `splits`, `dividends`) were verified working on the real free
-  tier on 2026-09-08, so the `MANUAL` corporate-action fallback is not needed.
+  (`time_series`, `splits`, `dividends`) work on the free tier **for AAPL**, which is
+  the symbol they were first verified against. `splits` and `dividends` are 403 for
+  most other symbols, so the `MANUAL` fallback very much is needed - see the
+  corporate-actions non-negotiable above.
 - `gh` **has** the `workflow` scope. (An earlier note here said otherwise.)
+- **A stale `bin`/`obj` makes `dotnet test` report "Zero tests ran" for all eight
+  assemblies** (exit code 5), which looks like total collapse and is not. The stale
+  test apps are built as xunit's own console runner instead of the MTP entry point,
+  so `dotnet test` drives them with MTP arguments they reject. Running the `.exe`
+  directly still passes, which is the tell. `dotnet clean` then rebuild fixes it.
+  Likely after the disk-space cleanup above, since incremental build does not
+  regenerate the entry point. A genuine break would fail differently.
+- **Git Bash mangles AWS log group names.** `aws logs tail /aws/lambda/...` fails with
+  `InvalidParameterException` because MSYS rewrites the leading `/` into a Windows
+  path. Prefix the command with `MSYS_NO_PATHCONV=1`.
 
 ## Vendor payload shapes, confirmed against the live API
 
